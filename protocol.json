@@ -1,0 +1,254 @@
+{"controller_to_host": [{
+    "exchange_packet": {
+      "description": "Основной пакет состояния установки",
+      "sync_byte": "0xAA",
+      "size": 32,
+      "fields": [
+        {
+          "name": "prefix",
+          "offset": 0,
+          "size": 1,
+          "type": "uint8",
+          "description": "Стартовый байт пакета"
+        },
+        {
+          "name": "num_uint8_fields",
+          "offset": 1,
+          "size": 1,
+          "type": "uint8",
+          "description": "Количество 1-байтовых полей"
+        },
+        {
+          "name": "num_uint32_fields",
+          "offset": 2,
+          "size": 1,
+          "type": "uint8",
+          "description": "Количество 4-байтовых полей"
+        },
+        {
+          "name": "forvacuum_state",
+          "offset": 3,
+          "size": 1,
+          "type": "uint8",
+          "enum": {
+            "0": "OFF",
+            "1": "ON"
+          }
+        },
+        {
+          "name": "tmn_state",
+          "offset": 4,
+          "size": 1,
+          "type": "uint8",
+          "enum": {
+            "0": "OFF",
+            "1": "ACCELERATION",
+            "2": "NOMINAL"
+          }
+        },
+        {
+          "name": "du16",
+          "offset": 5,
+          "size": 1,
+          "type": "bitfield",
+          "bits": {
+            "V1": 0,
+            "V3": 1,
+            "V6": 2,
+            "V7": 3
+          }
+        },
+        {
+          "name": "du63",
+          "offset": 6,
+          "size": 1,
+          "type": "uint8",
+          "description": "Состояние электромеханического клапана Ду63"
+        },
+        {
+          "name": "electro_valves",
+          "offset": 7,
+          "size": 1,
+          "type": "bitfield",
+          "bits": {
+            "V4": 0,
+            "V5": 1,
+            "V8": 2
+          }
+        },
+        {
+          "name": "mida_pressure",
+          "offset": 8,
+          "size": 4,
+          "type": "float32",
+          "unit": "Pa"
+        },
+        {
+          "name": "magdischarge_pressure",
+          "offset": 12,
+          "size": 4,
+          "type": "float32",
+          "unit": "Pa"
+        },
+        {
+          "name": "thermal_pressure",
+          "offset": 16,
+          "size": 4,
+          "type": "float32",
+          "unit": "Pa"
+        },
+        {
+        "name": "temperature_channels_1_2",
+        "offset": 20,
+        "size": 4,
+        "type": "uint16_pair",
+        "fields": [
+          {
+            "name": "temperature_channel_1",
+            "offset": 0,
+            "size": 2,
+            "type": "uint16",
+            "unit": "°C"
+          },
+          {
+            "name": "temperature_channel_2",
+            "offset": 2,
+            "size": 2,
+            "type": "uint16",
+            "unit": "°C"
+          }
+        ]
+      },
+        {
+        "name": "temperature_mcu_analog",
+        "offset": 24,
+        "size": 4,
+        "type": "uint16_pair",
+        "fields": [
+          {
+            "name": "temperature_mcu_internal",
+            "offset": 0,
+            "size": 2,
+            "type": "uint16",
+            "unit": "°C"
+          },
+          {
+            "name": "temperature_mcu_external",
+            "offset": 2,
+            "size": 2,
+            "type": "uint16",
+            "unit": "°C"
+          }
+        ]
+      },
+        {
+          "name": "tmn_rpm",
+          "offset": 28,
+          "size": 4,
+          "type": "uint32",
+          "range": "0–50000",
+          "unit": "rpm"
+        }
+      ]
+    }
+  },
+    {"error_packet": {
+      "description": "Пакет сообщения об ошибке",
+      "sync_byte": "0xBB",
+      "size": 0,
+      "fields": [
+        {
+          "name": "header",
+          "size": 1,
+          "type": "uint8",
+          "value": "0xBB"
+        },
+        {
+          "name": "cmd_id",
+          "size": 1,
+          "type": "uint8",
+          "description": "Команда, вызвавшая ошибку"
+        },
+        {
+          "name": "error_code",
+          "size": 1,
+          "type": "uint8",
+          "enum": {
+            "0x01": "UNKNOWN_COMMAND",
+            "0x02": "INVALID_LENGTH",
+            "0x03": "INVALID_ARGUMENT",
+            "0x04": "INVALID_STATE",
+            "0x05": "RS232_ERROR",
+            "0x06": "RS485_ERROR",
+            "0x07": "DEVICE_CONTROL_ERROR",
+            "0x08": "EEPROM_ERROR"
+          }
+        },
+        {
+          "name": "len",
+          "size": 1,
+          "type": "uint8"
+        },
+        {
+          "name": "error_info",
+          "size": "N",
+          "type": "bytes",
+          "description": "Дополнительная информация (строка или бинарные данные)"
+        }
+        ]
+  }},
+    {"eprom_read_response": {
+      "description": "Пакет ответа на запрос чтения из памяти",
+      "sync_byte": "0xCC",
+      "size": 0,
+      "fields": [
+        { "name": "header", "size": 1, "type": "uint8" },
+        { "name": "cmd_id", "size": 1, "type": "uint8", "value": "0x12" },
+        { "name": "len", "size": 1, "type": "uint8" },
+        { "name": "data", "size": 0, "type": "uint8[]" }
+      ]
+    }}
+  ],
+  "host_to_controller": [{
+    "control_packet": {
+      "description": "Универсальный пакет управления",
+      "fields": [
+        { "name": "header", "size": 1, "type": "uint8", "example": "0xAA" },
+        { "name": "cmd_id", "size": 1, "type": "uint8" },
+        { "name": "payload_len", "size": 1, "type": "uint8" },
+        { "name": "payload", "size": 0, "type": "bytes" }
+      ],
+      "command_definitions": {
+    "0x01": { "name": "SYSTEM_ENABLE", "payload": "uint8", "description": "1 — вкл, 0 — выкл" },
+    "0x02": { "name": "FORVACUUM_CONTROL", "payload": "uint8", "units": ["NI"]},
+    "0x03": { "name": "TMN_CONTROL", "payload": "uint8", "units": ["NR"] },
+    "0x04": { "name": "MIDA_UNITS", "payload": "uint8", "description": "0 — Па, 1 — Торр", "units": ["P2"] },
+    "0x05": { "name": "MIDA_CALIBRATION", "payload": "bytes", "units": ["P2"]},
+    "0x06": { "name": "DU16_CONTROL", "payload": "uint8", "units": ["V1", "V3", "V6", "V7"] },
+    "0x07": { "name": "DU63_CONTROL", "payload": "uint8", "units": ["V2"] },
+    "0x08": { "name": "ELECTRO_VALVE_CONTROL", "payload": "uint8", "units": ["V4", "V5", "V8"] },
+    "0x09": { "name": "SET_PRESSURE", "payload": "float32" },
+    "0x0A": { "name": "GET_ERRORS", "payload": "uint8" }
+  }
+    }
+  },
+    {"eprom_write": {
+      "description": "Пакет запроса записи в память",
+      "header": "0xCC",
+      "cmd_id": "0x10",
+      "fields": [
+        { "name": "len", "size": 1, "type": "uint8" },
+        { "name": "address", "size": 2, "type": "uint16" },
+        { "name": "data", "size": 0, "type": "uint8[]" }
+      ]
+    }},
+    {"eprom_read": {
+      "description": "Пакет запроса чтения из памяти",
+      "header": "0xCC",
+      "cmd_id": "0x11",
+      "fields": [
+        { "name": "address", "size": 2, "type": "uint16" },
+        { "name": "num_bytes", "size": 1, "type": "uint8" }
+      ]
+    }}]
+}
