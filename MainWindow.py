@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QStackedWidget, Q
 
 from Engine import Engine
 from GraphWindow import GraphPanel
+from ModesManager import ModesManager
 from ShematicWindow import SchematicWidget
 from ProtocolEditorWindow import ProtocolEditorWindow
 from EepromWindow import EepromWindow
@@ -94,19 +95,19 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
 
-        # ======================================================
-        # 1 СТОЛБЕЦ — кнопки и режимы
-        # ======================================================
         self.work_control = QStackedWidget()
 
         # --- продвинутый режим ---
         control_panel = QWidget()
         control_layout = QVBoxLayout(control_panel)
 
+        self.valve_buttons = {}
+
         for name in ("V1", "V2", "V3", "V4", "V5", "V8"):
             btn = QPushButton(f"Открыть клапан {name}")
             btn.clicked.connect(lambda _, n=name: self._on_valve_click(n))
             control_layout.addWidget(btn)
+            self.valve_buttons[name] = btn
 
         self.work_control.addWidget(control_panel)
 
@@ -114,12 +115,12 @@ class MainWindow(QMainWindow):
         basic_panel = QWidget()
         basic_layout = QVBoxLayout(basic_panel)
 
-        """
+
         self.modes_manager = ModesManager(
             layout=basic_layout,
             engine=self.engine
         )
-        """
+
 
         self.work_control.addWidget(basic_panel)
 
@@ -221,8 +222,31 @@ class MainWindow(QMainWindow):
 
     # ---------- команды на клапаны ----------
 
-    def _on_valve_click(self, name, _):
+    def _on_valve_click(self, name, _=None):
+        schematic = self.schematic.items
+        if name in schematic:
+            item = schematic[name]
+            item.status = "waiting"
+            item.update_color()
+
+        self._update_valve_button(name, "waiting")
         self.engine.request_state_change(name)
+
+    def _update_valve_button(self, name: str, status: str):
+        """Обновляет текст и активность кнопки клапана по статусу (closed/waiting/open)"""
+        btn = self.valve_buttons.get(name)
+        if not btn:
+            return
+
+        if status == "closed":
+            btn.setText(f"Открыть клапан {name}")
+            btn.setEnabled(True)
+        elif status == "waiting":
+            btn.setText(f"Отправлено... {name}")
+            btn.setEnabled(False)
+        elif status == "open":
+            btn.setText(f"Закрыть клапан {name}")
+            btn.setEnabled(True)
 
     # ---------- подключение ----------
 
@@ -250,7 +274,6 @@ class MainWindow(QMainWindow):
 
     # ---------- отображение данных ----------
     def display_data(self, data: dict):
-        """Полученные пакеты от Engine обновляют GUI"""
         if "EEPROM_READ" in data:
             self.eeprom_data_signal.emit(data["EEPROM_READ"])
             return
@@ -265,29 +288,34 @@ class MainWindow(QMainWindow):
             # обновляем схему
             self.update_schematic(data)
 
-    def update_schematic(self, data: dict):
+    def apply_valve_state(self, name: str, is_open: bool):
+        """Единая точка применения реального состояния от Engine к схеме и кнопке"""
+        status = "open" if is_open else "closed"
+
         schematic = self.schematic.items
+        if name in schematic:
+            schematic[name].apply_system_state(is_open)
 
-        if "forvacuum_state" in data and "NI" in schematic:
-            schematic["NI"].apply_system_state(bool(data["forvacuum_state"]))
+        self._update_valve_button(name, status)
 
-        if "tmn_state" in data and "NR" in schematic:
-            schematic["NR"].apply_system_state(bool(data["tmn_state"]))
+    def update_schematic(self, data: dict):
+        if "forvacuum_state" in data:
+            self.apply_valve_state("NI", bool(data["forvacuum_state"]))
+
+        if "tmn_state" in data:
+            self.apply_valve_state("NR", bool(data["tmn_state"]))
 
         if "du16" in data:
             for k, v in data["du16"].items():
-                if k in schematic:
-                    schematic[k].apply_system_state(bool(v))
+                self.apply_valve_state(k, bool(v))
 
-        if "du63" in data and "V2" in schematic:
-            schematic["V2"].apply_system_state(bool(data["du63"]))
+        if "du63" in data:
+            self.apply_valve_state("V2", bool(data["du63"]))
 
         if "electro_valves" in data:
             for k, v in data["electro_valves"].items():
-                if k in schematic:
-                    schematic[k].apply_system_state(bool(v))
+                self.apply_valve_state(k, bool(v))
 
-    # ---------- ошибки ----------
     def display_error(self, msg: str):
         if not self.error_box_open:
             self.error_box_open = True
