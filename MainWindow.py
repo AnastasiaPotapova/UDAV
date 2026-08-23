@@ -10,6 +10,7 @@ from ShematicWindow import SchematicWidget
 from ProtocolEditorWindow import ProtocolEditorWindow
 from EepromWindow import EepromWindow
 from ConfigWindow import ConfigWindow
+from LogWindow import LogWindow
 
 # ------------------------------------------------------------------------------------------------
 #                                  ОКНО НАСТРОЕК ПОДКЛЮЧЕНИЯ
@@ -114,13 +115,11 @@ class MainWindow(QMainWindow):
         # --- базовый режим ---
         basic_panel = QWidget()
         basic_layout = QVBoxLayout(basic_panel)
-
-
+        """
         self.modes_manager = ModesManager(
-            layout=basic_layout,
-            engine=self.engine
+            layout=basic_layout
         )
-
+        """
 
         self.work_control.addWidget(basic_panel)
 
@@ -197,8 +196,13 @@ class MainWindow(QMainWindow):
         eeprom_menu.addAction("Прочитать").triggered.connect(self.ReadEeprom)
         eeprom_menu.addAction("Записать")
 
-        menubar.addMenu("Логи")
+        logs_menu = menubar.addMenu("Логи")
+        logs_menu.addAction("Открыть окно логов").triggered.connect(self.open_log_window)
         menubar.addMenu("Сгенерировать протокол поверки")
+
+        info_menu = menubar.addMenu("Сведения")
+        info_menu.addAction("Программное обеспечение").triggered.connect(self.ReadEeprom)
+        info_menu.addAction("Условные обозначения")
 
     def _save_meta(self):
         operator = self.operator_edit.text().strip()
@@ -341,3 +345,7 @@ class MainWindow(QMainWindow):
     def ReadConfig(self):
         self.w2 = ConfigWindow()
         self.w2.show()
+
+    def open_log_window(self):
+        self.log_window = LogWindow()
+        self.log_window.show()
