@@ -213,7 +213,7 @@
     "control_packet": {
       "description": "Универсальный пакет управления",
       "fields": [
-        { "name": "header", "size": 1, "type": "uint8", "example": "0xAA" },
+        { "name": "header", "size": 1, "type": "uint8", "example": "0xbb" },
         { "name": "cmd_id", "size": 1, "type": "uint8" },
         { "name": "payload_len", "size": 1, "type": "uint8" },
         { "name": "payload", "size": 0, "type": "bytes" }
