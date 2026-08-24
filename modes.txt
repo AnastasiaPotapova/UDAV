@@ -1,0 +1,124 @@
+# ======================================
+# ФУНКЦИИ И ПРОГРАММЫ ДЛЯ SCADA NIIM
+# ======================================
+
+[INIT]
+# Проверка герметичности системы
+CLOSE V1
+CLOSE V2
+CLOSE V3
+CLOSE V4
+CLOSE V5
+CLOSE V8
+CONFIRM "Герметичность системы проверена?"
+
+# ======================================
+[ПЕРВЫЙ ЗАПУСК]
+OPEN V4
+OPEN V8
+CHECK P1
+CHECK P2
+ON NI
+OPEN V1
+OPEN V3
+OPEN V2
+WAIT UNTIL P1 < 100 AND P2 < 100
+ON NR
+WAIT TIME 300
+ON P3
+IF P3 < 0.01 THEN MESSAGE "Давление удовлетворительное, можно приступать к поверке"
+
+# ======================================
+[ЗАМЕНА ДАТЧИКОВ]
+CLOSE V2
+CLOSE V5
+OPEN V4
+OPEN V8
+VF RAISE PRESSURE UNTIL P2 >= 101325
+CLOSE VF
+CLOSE V8
+MESSAGE "Можно менять поверяемые датчики"
+
+# ======================================
+[ЗАПУСК ПОСЛЕ ЗАМЕНЫ]
+CHECK NR_RUNNING
+CLOSE V2
+CLOSE V3
+OPEN V5
+OPEN V4
+OPEN V8
+WAIT UNTIL P1 < 100 AND P2 < 100
+CLOSE V5
+OPEN V3
+OPEN V2
+WAIT TIME 300
+ON P3
+IF P3 < 0.01 THEN MESSAGE "Давление удовлетворительное, можно приступать к поверке"
+
+# ======================================
+[ОСТАНОВКА]
+CLOSE VF
+CLOSE V8
+CLOSE V4
+CLOSE V5
+CLOSE V2
+OFF NR
+CLOSE V3
+CLOSE V1
+OFF NI
+MESSAGE "Система остановлена. Отключите питание."
+
+# ======================================
+[ПОВЕРКА СТАТИЧЕСКОГО РАСШИРЕНИЯ]
+CLOSE V4
+OPEN V8
+#SET PRESSURE P2 USING VF FORMULA
+CLOSE VF
+CLOSE V8
+SAVE P2 AS P2_BEFORE
+CLOSE V2
+OPEN V4
+WAIT TIME 10
+SAVE P2 AS P2_AFTER
+CALC K = P2_AFTER / P2_BEFORE
+MESSAGE "Расчитано значение K = {K}"
+
+# ======================================
+[ОТКАЧКА КАМЕРЫ ПОСЛЕ РАСШИРЕНИЯ]
+IF P2 < 100 THEN
+    CLOSE V4
+    OPEN V2
+    WAIT TIME 300
+    ON P3
+    IF P3 < 0.01 THEN MESSAGE "Давление <0.01 Па. Можно продолжать."
+ELSE
+#    RUN [ПОВЕРКА СТАТИЧЕСКОГО РАСШИРЕНИЯ] AGAIN WITHOUT ATM
+
+# ======================================
+[ПОВТОРНОЕ РАСШИРЕНИЕ]
+CLOSE V4
+CLOSE V3
+OPEN V5
+WAIT UNTIL P1 < 100
+CLOSE V5
+OPEN V3
+OPEN V2
+
+# ======================================
+[ПОВЕРКА СРАВНЕНИЕМ]
+CLOSE V2
+CLOSE V5
+OPEN V4
+OPEN V8
+IF P2 > 150 THEN RUN [ОТКАЧКА ФОР НАСОСА]
+ELSE
+    MESSAGE "Переход к поверке по сравнению"
+
+# ======================================
+[ОТКАЧКА ФОР НАСОСА]
+CLOSE V3
+OPEN V5
+WAIT UNTIL P1 < 150
+SET PRESSURE USING VF
+IF P2 < 100 THEN RUN [ПОВЕРКА СТАТИЧЕСКОГО РАСШИРЕНИЯ]
+ELSE RUN [ПОВЕРКА СРАВНЕНИЕМ]
