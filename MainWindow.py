@@ -11,6 +11,8 @@ from ProtocolEditorWindow import ProtocolEditorWindow
 from EepromWindow import EepromWindow
 from ConfigWindow import ConfigWindow
 from LogWindow import LogWindow
+from SoftwareInfoWindow import SoftwareInfoWindow
+from LegendWindow import LegendWindow
 
 # ------------------------------------------------------------------------------------------------
 #                                  ОКНО НАСТРОЕК ПОДКЛЮЧЕНИЯ
@@ -115,11 +117,11 @@ class MainWindow(QMainWindow):
         # --- базовый режим ---
         basic_panel = QWidget()
         basic_layout = QVBoxLayout(basic_panel)
-        """
+
         self.modes_manager = ModesManager(
-            layout=basic_layout
+            layout=basic_layout, engine=self.engine
         )
-        """
+
 
         self.work_control.addWidget(basic_panel)
 
@@ -201,8 +203,8 @@ class MainWindow(QMainWindow):
         menubar.addMenu("Сгенерировать протокол поверки")
 
         info_menu = menubar.addMenu("Сведения")
-        info_menu.addAction("Программное обеспечение").triggered.connect(self.ReadEeprom)
-        info_menu.addAction("Условные обозначения")
+        info_menu.addAction("Программное обеспечение").triggered.connect(self.open_software_info)
+        info_menu.addAction("Условные обозначения").triggered.connect(self.open_legend)
 
     def _save_meta(self):
         operator = self.operator_edit.text().strip()
@@ -278,18 +280,12 @@ class MainWindow(QMainWindow):
 
     # ---------- отображение данных ----------
     def display_data(self, data: dict):
-        if "EEPROM_READ" in data:
-            self.eeprom_data_signal.emit(data["EEPROM_READ"])
-            return
-
         if data["__packet__"] == "exchange_packet":
-            # обновляем графики
             self.graph_panel.update_plots([
                 data.get("mida_pressure"),
                 data.get("magdischarge_pressure"),
                 data.get("thermal_pressure")
             ])
-            # обновляем схему
             self.update_schematic(data)
 
     def apply_valve_state(self, name: str, is_open: bool):
@@ -338,8 +334,9 @@ class MainWindow(QMainWindow):
 
     def ReadEeprom(self):
         self.w = EepromWindow()
-        self.w.send_eprom_command_signal.connect(self.send_eprom_command_signal)
-        self.eeprom_data_signal.connect(self.w.handle_data)
+        self.w.eeprom_read_request.connect(self.engine.eeprom_read)
+        self.w.eeprom_write_request.connect(self.engine.eeprom_write)
+        self.engine.eeprom_data_received.connect(self.w.handle_data)
         self.w.show()
 
     def ReadConfig(self):
@@ -349,3 +346,11 @@ class MainWindow(QMainWindow):
     def open_log_window(self):
         self.log_window = LogWindow()
         self.log_window.show()
+
+    def open_software_info(self):
+        self.software_info_window = SoftwareInfoWindow()
+        self.software_info_window.show()
+
+    def open_legend(self):
+        self.legend_window = LegendWindow()
+        self.legend_window.show()

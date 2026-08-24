@@ -5,13 +5,16 @@ import time
 import logging
 import os
 
+from resource_path import resource_path
+
+
 class ModesExecutor(QObject):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    def __init__(self, serial_worker):
+    def __init__(self, engine):
         super().__init__()
-        self.serial_worker = serial_worker
+        self.engine = engine
         self.running = False
         self.variables = {}  # для сохранения значений: {"P2_BEFORE": 123.4, "K": 0.5}
 
@@ -85,40 +88,33 @@ class ModesExecutor(QObject):
 
     # ------------------------------------------------------------------
     def _handle_valve(self, parts):
+        """OPEN/CLOSE <имя клапана>"""
         if len(parts) < 2:
             return
         name = parts[1].upper()
         value = 1 if parts[0].upper() == "OPEN" else 0
 
-        valve_map = {
-            "V1": 0x06, "V3": 0x06, "V6": 0x06, "V7": 0x06,
-            "V2": 0x07,
-            "V4": 0x08, "V5": 0x08, "V8": 0x08,
-            "VF": 0x09,
-        }
+        valid_valves = ("V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8")
 
-        if name in valve_map:
-            self.serial_worker.send_command(valve_map[name], bytes([value]))
+        if name in valid_valves:
+            self.engine.set_element_state(name, value)
         else:
             logging.warning(f"Неизвестный клапан: {name}")
 
     # ------------------------------------------------------------------
     def _handle_device(self, parts):
+        """ON/OFF <имя устройства> (насосы NI/NR)"""
         if len(parts) < 2:
             return
         name = parts[1].upper()
         value = 1 if parts[0].upper() == "ON" else 0
 
-        device_map = {
-            "NI": 0x02,
-            "NR": 0x03,
-            "P3": 0x09,
-        }
+        valid_devices = ("NI", "NR")
 
-        if name in device_map:
-            self.serial_worker.send_command(device_map[name], bytes([value]))
+        if name in valid_devices:
+            self.engine.set_element_state(name, value)
         else:
-            logging.warning(f"Неизвестное устройство: {name}")
+            logging.warning(f"Неизвестное или неуправляемое устройство: {name}")
 
     # ------------------------------------------------------------------
     def _handle_check(self, parts):
@@ -127,8 +123,8 @@ class ModesExecutor(QObject):
         sensor = parts[1].upper()
         name_map = {"P1": "MIDA", "P2": "Magdischarge", "P3": "ThermalIndicator"}
 
-        if sensor in name_map and hasattr(self.serial_worker, "last_data"):
-            val = self.serial_worker.last_data.get(name_map[sensor], None)
+        if sensor in name_map:
+            val = self.engine.last_data.get(name_map[sensor])
             if val is not None:
                 QMessageBox.information(None, "Контроль датчика",
                                         f"{sensor}: {val:.3f} Па")
@@ -141,7 +137,12 @@ class ModesExecutor(QObject):
         if len(parts) == 2 and parts[1].replace('.', '', 1).isdigit():
             delay = float(parts[1])
             logging.info(f"Ждём {delay} секунд...")
-            time.sleep(delay)
+            end_time = time.time() + delay
+            while time.time() < end_time:
+                if not self.running:
+                    return
+                QApplication.processEvents()
+                time.sleep(0.05)
             return
 
         if len(parts) >= 5 and parts[1].upper() == "UNTIL":
@@ -161,17 +162,19 @@ class ModesExecutor(QObject):
 
             logging.info(f"Ждём пока {sensor} {op} {threshold}")
             while self.running:
-                data = getattr(self.serial_worker, "last_data", {})
-                val = data.get(field)
+                val = self.engine.last_data.get(field)
                 if val is None:
-                    time.sleep(0.5)
+                    QApplication.processEvents()
+                    time.sleep(0.2)
                     continue
 
                 if ((op == "<" and val < threshold) or
                     (op == ">" and val > threshold)):
                     logging.info(f"{sensor} достиг {val:.3f}")
                     break
-                time.sleep(0.5)
+
+                QApplication.processEvents()
+                time.sleep(0.2)
 
     # ------------------------------------------------------------------
     def _handle_set(self, parts):
@@ -182,11 +185,10 @@ class ModesExecutor(QObject):
             target = parts[2].upper()
             if parts[3].upper() == "USING" and parts[4].upper() == "VF":
                 logging.info(f"Установка давления {target} с помощью клапана VF (по формуле)")
-                # здесь можно вставить управляющий алгоритм по формуле
-                # пока просто пример:
-                self.serial_worker.send_command(0x09, bytes([1]))
+                # TODO: здесь должен быть реальный алгоритм регулирования VF
+                self.engine.set_element_state("VF", 1)
                 time.sleep(1)
-                self.serial_worker.send_command(0x09, bytes([0]))
+                self.engine.set_element_state("VF", 0)
             else:
                 logging.warning(f"Неизвестная конструкция SET: {parts}")
         else:
@@ -202,7 +204,7 @@ class ModesExecutor(QObject):
             varname = parts[3].upper()
             name_map = {"P1": "MIDA", "P2": "Magdischarge", "P3": "ThermalIndicator"}
             field = name_map.get(sensor)
-            val = getattr(self.serial_worker, "last_data", {}).get(field)
+            val = self.engine.last_data.get(field) if field else None
             if val is not None:
                 self.variables[varname] = val
                 logging.info(f"Сохранено {sensor}={val:.3f} как {varname}")
@@ -223,7 +225,6 @@ class ModesExecutor(QObject):
             var = left.strip()
             formula = right.strip()
 
-            # заменяем имена переменных на их значения
             for k, v in self.variables.items():
                 formula = formula.replace(k, str(v))
 
@@ -234,14 +235,13 @@ class ModesExecutor(QObject):
             logging.warning(f"Ошибка вычисления CALC: {e}")
 
 
-
 class ModesManager:
-    def __init__(self, layout, serial_worker, filepath="modes.txt"):
+    def __init__(self, layout, engine, filepath="modes.txt"):
         self.layout = layout
-        self.filepath = filepath
-        self.serial_worker = serial_worker
+        self.filepath = resource_path(filepath)
+        self.engine = engine
         self.programs = {}
-        self.executor = ModesExecutor(serial_worker)
+        self.executor = ModesExecutor(engine)
         self.load_programs()
         self.generate_buttons()
 

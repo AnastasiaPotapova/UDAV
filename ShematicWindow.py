@@ -254,10 +254,23 @@ class SchematicWidget(QGraphicsView):
         self.items["P3"] = VacuumGauge("P3", "t", 140, 60)
         self.items["P3"].add_to_scene(self.scene)
 
-        # Прямоугольники и линии
         self.items["CV1"] = QGraphicsRectItem(0, 40, 120, 120)
         self.items["CV1"].setBrush(QBrush(QColor("lightblue")))
         self.scene.addItem(self.items["CV1"])
+
+        # подпись внутри фигуры CV1
+        cv1_label = QGraphicsTextItem("CV1")
+        font = QFont()
+        font.setBold(True)
+        cv1_label.setFont(font)
+
+        rect = self.items["CV1"].rect()
+        text_rect = cv1_label.boundingRect()
+        cv1_label.setPos(
+            rect.center().x() - text_rect.width() / 2,
+            rect.center().y() - text_rect.height() / 2
+        )
+        self.scene.addItem(cv1_label)
         self.draw_line(60, 280, 60, 400)
         self.draw_line(160, 400, 60, 400)
         self.draw_line(140, 420, 140, 160)

@@ -5,18 +5,19 @@ import time
 from ProtocolEngine import ProtocolEngine
 from SerialEngine import SerialEngine
 from logger_setup import app_logger, controller_logger
+from resource_path import resource_path
 
 # Engine
 
 class Engine(QObject):
     packet_received = pyqtSignal(dict)
+    eeprom_data_received = pyqtSignal(list)
 
     def __init__(self):
         super().__init__()
-        self.protocol = ProtocolEngine("protocol.json")
+        self.protocol = ProtocolEngine(resource_path("protocol.json"))
         self.serial = SerialEngine(protocol_engine=self.protocol)
 
-        # Переопределяем callback для пакетов
         self.serial._feed_protocol = self._feed_protocol
         self.system_status = {
             "NI": 0, "NR": 0,
@@ -24,13 +25,67 @@ class Engine(QObject):
             "V5": 0, "V6": 0, "V7": 0, "V8": 0
         }
 
+        # последние показания датчиков (для сценариев автоматического режима)
+        self.last_data = {}
+
         self.DU16_VALVES = ["V1", "V3", "V6", "V7"]
         self.ELECTRO_VALVES = ["V4", "V5", "V8"]
 
-        self.CONTROL_MAP = { ... }  # без изменений
+        self.CONTROL_MAP = {
+            # Насосы
+            "NI": {
+                "cmd": "FORVACUUM_CONTROL",
+                "cmd_id": 0x02
+            },
+            "NR": {
+                "cmd": "TMN_CONTROL",
+                "cmd_id": 0x03
+            },
 
-        self.operator = None
-        self.installation = None
+            # Датчик (особый случай, не on/off)
+            "P2": {
+                "cmd": "MIDA_UNITS",
+                "cmd_id": 0x04
+            },
+
+            # Клапаны DU16
+            "V1": {
+                "cmd": "DU16_CONTROL",
+                "cmd_id": 0x06
+            },
+            "V3": {
+                "cmd": "DU16_CONTROL",
+                "cmd_id": 0x06
+            },
+            "V6": {
+                "cmd": "DU16_CONTROL",
+                "cmd_id": 0x06
+            },
+            "V7": {
+                "cmd": "DU16_CONTROL",
+                "cmd_id": 0x06
+            },
+
+            # Клапан DU63
+            "V2": {
+                "cmd": "DU63_CONTROL",
+                "cmd_id": 0x07
+            },
+
+            # Электромагнитные клапаны
+            "V4": {
+                "cmd": "ELECTRO_VALVE_CONTROL",
+                "cmd_id": 0x08
+            },
+            "V5": {
+                "cmd": "ELECTRO_VALVE_CONTROL",
+                "cmd_id": 0x08
+            },
+            "V8": {
+                "cmd": "ELECTRO_VALVE_CONTROL",
+                "cmd_id": 0x08
+            }
+        }
 
         # расшифровка кодов ошибок для контроллерного лога
         self.ERROR_CODES = {
@@ -44,6 +99,8 @@ class Engine(QObject):
             "0x08": "EEPROM_ERROR",
         }
 
+        self.operator = None
+        self.installation = None
         app_logger.info("Engine инициализирован")
 
     def _feed_protocol(self, data: bytes):
@@ -53,7 +110,30 @@ class Engine(QObject):
         for pkt in packets:
             app_logger.debug(f"Распакован пакет: {pkt}")
             self._log_controller_packet(pkt)
+
+            if pkt.get("__packet__") == "eprom_read_response":
+                raw_bytes = pkt.get("data", b"")
+                app_logger.info(f"EEPROM прочитано {len(raw_bytes)} байт")
+                self.eeprom_data_received.emit(list(raw_bytes))
+                continue
+
+            if pkt.get("__packet__") == "exchange_packet":
+                self._update_last_data(pkt)
+
             self.packet_received.emit(pkt)
+
+    def _update_last_data(self, pkt: dict):
+        """Сохраняем последние показания датчиков для сценариев автоматического режима"""
+        if "mida_pressure" in pkt:
+            self.last_data["MIDA"] = pkt["mida_pressure"]
+        if "magdischarge_pressure" in pkt:
+            self.last_data["Magdischarge"] = pkt["magdischarge_pressure"]
+        if "thermal_pressure" in pkt:
+            self.last_data["ThermalIndicator"] = pkt["thermal_pressure"]
+
+    def set_element_state(self, name: str, state: int):
+        app_logger.info(f"set_element_state({name}, {state})")
+        self._send_element_command(name, state)
 
     def _log_controller_packet(self, pkt: dict):
         """Пишет в лог контроллера: OK или расшифровку ошибки"""
@@ -140,3 +220,13 @@ class Engine(QObject):
         app_logger.info(f"set_operator_info(operator={operator}, installation={installation})")
         self.operator = operator
         self.installation = installation
+
+    def eeprom_read(self, address: int, num_bytes: int):
+        app_logger.info(f"eeprom_read(address={address}, num_bytes={num_bytes})")
+        pkt_bytes = self.protocol.build_eprom_read(address, num_bytes)
+        self.serial.send(pkt_bytes)
+
+    def eeprom_write(self, address: int, data: bytes):
+        app_logger.info(f"eeprom_write(address={address}, data={data.hex()})")
+        pkt_bytes = self.protocol.build_eprom_write(address, data)
+        self.serial.send(pkt_bytes)

@@ -1,8 +1,18 @@
-import logging
-import os
 from PyQt5.QtCore import QObject, pyqtSignal
 
-LOG_DIR = "logs"
+import logging
+import os
+import sys
+
+def get_log_dir() -> str:
+    if getattr(sys, "frozen", False):
+        # собранный .exe — пишем логи рядом с исполняемым файлом
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.abspath(".")
+    return os.path.join(base_dir, "logs")
+
+LOG_DIR = get_log_dir()
 os.makedirs(LOG_DIR, exist_ok=True)
 
 APP_LOG_FILE = os.path.join(LOG_DIR, "app.log")
