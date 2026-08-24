@@ -13,6 +13,7 @@ class Engine(QObject):
     packet_received = pyqtSignal(dict)
     eeprom_data_received = pyqtSignal(list)
 
+
     def __init__(self):
         super().__init__()
         self.protocol = ProtocolEngine(resource_path("protocol.json"))
