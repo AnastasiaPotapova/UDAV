@@ -211,6 +211,13 @@ class MainWindow(QMainWindow):
         info_menu.addAction("Программное обеспечение").triggered.connect(self.open_software_info)
         info_menu.addAction("Условные обозначения").triggered.connect(self.open_legend)
 
+    def ReadEeprom(self):
+        self.w = EepromWindow()
+        self.w.eeprom_read_request.connect(self.engine.eeprom_read)
+        self.w.eeprom_write_request.connect(self.engine.eeprom_write)
+        self.engine.eeprom_data_received.connect(self.w.handle_data)
+        self.w.show()
+
     def _save_meta(self):
         operator = self.operator_edit.text().strip()
         installation = self.installation_edit.text().strip()

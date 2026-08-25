@@ -4,12 +4,14 @@ import time
 
 from ProtocolEngine import ProtocolEngine
 from SerialEngine import SerialEngine
+from logger_setup import app_logger, controller_logger
 from resource_path import resource_path
 
 # Engine
 
 class Engine(QObject):
     packet_received = pyqtSignal(dict)
+    eeprom_data_received = pyqtSignal(dict)
 
     # Группы клапанов, состояние которых кодируется одним битовым полем
     DU16_VALVES = ["V1", "V3", "V6", "V7"]
@@ -161,12 +163,31 @@ class Engine(QObject):
     # ------------------------------------------------------------------
     # EEPROM
     # ------------------------------------------------------------------
-    def read_eeprom(self, address: int, num_bytes: int):
+
+    def eeprom_read(self, address: int, num_bytes: int):
+        app_logger.info(f"eeprom_read(address={address}, num_bytes={num_bytes})")
         pkt_bytes = self.protocol.build_eprom_read(address, num_bytes)
         self.serial.send(pkt_bytes)
 
-    def write_eeprom(self, address: int, data: bytes):
+    def eeprom_write(self, address: int, data: bytes):
+        app_logger.info(f"eeprom_write(address={address}, data={data.hex()})")
         pkt_bytes = self.protocol.build_eprom_write(address, data)
         self.serial.send(pkt_bytes)
+
+    def _feed_protocol(self, data: bytes):
+        controller_logger.debug(f"RX RAW: {data.hex()}")
+
+        packets = self.protocol.feed(data)
+        for pkt in packets:
+            app_logger.debug(f"Распакован пакет: {pkt}")
+            self._log_controller_packet(pkt)
+
+            if pkt.get("__packet__") == "eprom_read_response":
+                raw_bytes = pkt.get("data", b"")
+                app_logger.info(f"EEPROM прочитано {len(raw_bytes)} байт")
+                self.eeprom_data_received.emit(list(raw_bytes))
+                continue  # не пробрасываем в общий packet_received
+
+            self.packet_received.emit(pkt)
 
 
