@@ -4,6 +4,7 @@ import time
 
 from ProtocolEngine import ProtocolEngine
 from SerialEngine import SerialEngine
+from resource_path import resource_path
 
 # Engine
 
@@ -16,7 +17,7 @@ class Engine(QObject):
 
     def __init__(self):
         super().__init__()
-        self.protocol = ProtocolEngine("protocol.json")
+        self.protocol = ProtocolEngine(resource_path("protocol.json"))
         self.serial = SerialEngine(protocol_engine=self.protocol)
 
         # Переопределяем callback для пакетов
@@ -167,3 +168,5 @@ class Engine(QObject):
     def write_eeprom(self, address: int, data: bytes):
         pkt_bytes = self.protocol.build_eprom_write(address, data)
         self.serial.send(pkt_bytes)
+
+

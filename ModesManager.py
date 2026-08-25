@@ -5,8 +5,8 @@ import time
 import logging
 import os
 
-# Соответствие имени датчика из DSL-сценариев полю пакета exchange_packet
-# (см. protocol.json / Протокол.xlsx, раздел "Постоянный обмен")
+from resource_path import resource_path
+
 SENSOR_FIELD_MAP = {
     "P1": "mida_pressure",
     "P2": "magdischarge_pressure",
@@ -254,7 +254,7 @@ class ModesExecutor(QObject):
 class ModesManager:
     def __init__(self, layout, engine, filepath="modes.txt"):
         self.layout = layout
-        self.filepath = filepath
+        self.filepath = resource_path(filepath)
         self.engine = engine
         self.programs = {}
         self.executor = ModesExecutor(engine)

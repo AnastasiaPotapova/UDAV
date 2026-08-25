@@ -5,11 +5,15 @@ from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QStackedWidget, Q
 
 from Engine import Engine
 from GraphWindow import GraphPanel
+from LegendWindow import LegendWindow
+from LogWindow import LogWindow
 from ModesManager import ModesManager
 from ShematicWindow import SchematicWidget
 from ProtocolEditorWindow import ProtocolEditorWindow
 from EepromWindow import EepromWindow
 from ConfigWindow import ConfigWindow
+from SoftwareInfoWindow import SoftwareInfoWindow
+
 
 # ------------------------------------------------------------------------------------------------
 #                                  ОКНО НАСТРОЕК ПОДКЛЮЧЕНИЯ
@@ -75,8 +79,8 @@ class ConnectSettingsWindow(QWidget):
 
 
 class MainWindow(QMainWindow):
-    # Список значений EEPROM (int), полученный из eprom_read_response
-    eeprom_data_signal = pyqtSignal(list)
+    packet_received = pyqtSignal(dict)
+    eeprom_data_received = pyqtSignal(list)
 
     def __init__(self, engine: Engine):
         super().__init__()
@@ -200,8 +204,12 @@ class MainWindow(QMainWindow):
         eeprom_menu.addAction("Прочитать").triggered.connect(self.ReadEeprom)
         eeprom_menu.addAction("Записать")
 
-        menubar.addMenu("Логи")
-        menubar.addMenu("Сгенерировать протокол поверки")
+        logs_menu = menubar.addMenu("Логи")
+        logs_menu.addAction("Открыть окно логов").triggered.connect(self.open_log_window)
+
+        info_menu = menubar.addMenu("Сведения")
+        info_menu.addAction("Программное обеспечение").triggered.connect(self.open_software_info)
+        info_menu.addAction("Условные обозначения").triggered.connect(self.open_legend)
 
     def _save_meta(self):
         operator = self.operator_edit.text().strip()
@@ -348,12 +356,44 @@ class MainWindow(QMainWindow):
         self.protocol_window = ProtocolEditorWindow()
         self.protocol_window.show()
 
-    def ReadEeprom(self):
-        self.w = EepromWindow()
-        self.w.read_requested.connect(self.engine.read_eeprom)
-        self.eeprom_data_signal.connect(self.w.handle_data)
-        self.w.show()
+    def eeprom_read(self, address: int, num_bytes: int):
+        app_logger.info(f"eeprom_read(address={address}, num_bytes={num_bytes})")
+        pkt_bytes = self.protocol.build_eprom_read(address, num_bytes)
+        self.serial.send(pkt_bytes)
+
+    def eeprom_write(self, address: int, data: bytes):
+        app_logger.info(f"eeprom_write(address={address}, data={data.hex()})")
+        pkt_bytes = self.protocol.build_eprom_write(address, data)
+        self.serial.send(pkt_bytes)
 
     def ReadConfig(self):
         self.w2 = ConfigWindow()
         self.w2.show()
+
+    def _feed_protocol(self, data: bytes):
+        controller_logger.debug(f"RX RAW: {data.hex()}")
+
+        packets = self.protocol.feed(data)
+        for pkt in packets:
+            app_logger.debug(f"Распакован пакет: {pkt}")
+            self._log_controller_packet(pkt)
+
+            if pkt.get("__packet__") == "eprom_read_response":
+                raw_bytes = pkt.get("data", b"")
+                app_logger.info(f"EEPROM прочитано {len(raw_bytes)} байт")
+                self.eeprom_data_received.emit(list(raw_bytes))
+                continue  # не пробрасываем в общий packet_received
+
+            self.packet_received.emit(pkt)
+
+    def open_software_info(self):
+        self.software_info_window = SoftwareInfoWindow()
+        self.software_info_window.show()
+
+    def open_legend(self):
+        self.legend_window = LegendWindow()
+        self.legend_window.show()
+
+    def open_log_window(self):
+        self.log_window = LogWindow()
+        self.log_window.show()
