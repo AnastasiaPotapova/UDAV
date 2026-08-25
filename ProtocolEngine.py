@@ -188,8 +188,14 @@ class ProtocolEngine:
 
     @staticmethod
     def _pack_value(typ, value, field_desc=None):
-        import struct
+        """
+        Упаковка payload для host_to_controller control_packet.
 
+        Групповые клапаны (DU16 / электромагнитные) НЕ упаковываются здесь
+        из словаря — Engine._build_bitfield уже собирает готовый int
+        (битовое поле по всей группе) до вызова build_control(), поэтому
+        сюда всегда приходит обычное число (int/float), а не dict.
+        """
         TYPE_PACK = {
             "uint8": ("B", 1),
             "uint16": ("H", 2),
@@ -197,15 +203,6 @@ class ProtocolEngine:
             "float32": ("f", 4),
         }
 
-        # --- bitfield: если тип uint8 и в описании есть список клапанов ---
-        if typ == "uint8" and field_desc and "valves" in field_desc and isinstance(value, dict):
-            bit_value = 0
-            for idx, name in enumerate(field_desc["valves"]):
-                if value.get(name):  # 1 или True → ставим бит
-                    bit_value |= 1 << idx
-            value = bit_value  # заменяем словарь на целый байт
-
-        # --- стандартные типы ---
         if typ in TYPE_PACK:
             fmt, _ = TYPE_PACK[typ]
             return struct.pack("<" + fmt, value)
@@ -261,4 +258,3 @@ class ProtocolEngine:
             struct.pack("<H", address) +
             bytes([num_bytes])
         )
-

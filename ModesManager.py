@@ -5,7 +5,21 @@ import time
 import logging
 import os
 
-from resource_path import resource_path
+# Соответствие имени датчика из DSL-сценариев полю пакета exchange_packet
+# (см. protocol.json / Протокол.xlsx, раздел "Постоянный обмен")
+SENSOR_FIELD_MAP = {
+    "P1": "mida_pressure",
+    "P2": "magdischarge_pressure",
+    "P3": "thermal_pressure",
+}
+
+# Клапаны, которые реально существуют в протоколе как отдельные управляемые элементы.
+# VF управляется не отдельной ON/OFF командой, а через SET_PRESSURE (0x09) —
+# см. Engine._send_element_command, ветка "VF".
+VALVE_NAMES = {"V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "VF"}
+
+# Устройства с простым ON/OFF управлением
+DEVICE_NAMES = {"NI", "NR"}
 
 
 class ModesExecutor(QObject):
@@ -88,43 +102,49 @@ class ModesExecutor(QObject):
 
     # ------------------------------------------------------------------
     def _handle_valve(self, parts):
-        """OPEN/CLOSE <имя клапана>"""
+        """
+        OPEN/CLOSE <имя клапана>
+
+        Отправку конкретных байт по протоколу делает Engine.set_valve():
+        для клапанов группы DU16 (V1,V3,V6,V7) и группы электромагнитных
+        (V4,V5,V8) он сам строит битовое поле по ВСЕЙ группе, а не только
+        по одному клапану — это важно, иначе состояние остальных клапанов
+        группы будет сброшено в 0.
+        """
         if len(parts) < 2:
             return
         name = parts[1].upper()
-        value = 1 if parts[0].upper() == "OPEN" else 0
+        is_open = parts[0].upper() == "OPEN"
 
-        valid_valves = ("V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8")
-
-        if name in valid_valves:
-            self.engine.set_element_state(name, value)
-        else:
+        if name not in VALVE_NAMES:
             logging.warning(f"Неизвестный клапан: {name}")
+            return
+
+        self.engine.set_valve(name, is_open)
 
     # ------------------------------------------------------------------
     def _handle_device(self, parts):
-        """ON/OFF <имя устройства> (насосы NI/NR)"""
+        """ON/OFF <имя устройства> — только насосы NI/NR (по протоколу 0x02/0x03)."""
         if len(parts) < 2:
             return
         name = parts[1].upper()
-        value = 1 if parts[0].upper() == "ON" else 0
+        is_on = parts[0].upper() == "ON"
 
-        valid_devices = ("NI", "NR")
+        if name not in DEVICE_NAMES:
+            logging.warning(f"Неизвестное устройство: {name}")
+            return
 
-        if name in valid_devices:
-            self.engine.set_element_state(name, value)
-        else:
-            logging.warning(f"Неизвестное или неуправляемое устройство: {name}")
+        self.engine.set_device(name, is_on)
 
     # ------------------------------------------------------------------
     def _handle_check(self, parts):
         if len(parts) < 2:
             return
         sensor = parts[1].upper()
-        name_map = {"P1": "MIDA", "P2": "Magdischarge", "P3": "ThermalIndicator"}
+        field = SENSOR_FIELD_MAP.get(sensor)
 
-        if sensor in name_map:
-            val = self.engine.last_data.get(name_map[sensor])
+        if field:
+            val = self.engine.last_data.get(field)
             if val is not None:
                 QMessageBox.information(None, "Контроль датчика",
                                         f"{sensor}: {val:.3f} Па")
@@ -137,12 +157,7 @@ class ModesExecutor(QObject):
         if len(parts) == 2 and parts[1].replace('.', '', 1).isdigit():
             delay = float(parts[1])
             logging.info(f"Ждём {delay} секунд...")
-            end_time = time.time() + delay
-            while time.time() < end_time:
-                if not self.running:
-                    return
-                QApplication.processEvents()
-                time.sleep(0.05)
+            time.sleep(delay)
             return
 
         if len(parts) >= 5 and parts[1].upper() == "UNTIL":
@@ -154,8 +169,7 @@ class ModesExecutor(QObject):
                 logging.warning(f"Некорректное значение в WAIT: {parts}")
                 return
 
-            name_map = {"P1": "MIDA", "P2": "Magdischarge", "P3": "ThermalIndicator"}
-            field = name_map.get(sensor)
+            field = SENSOR_FIELD_MAP.get(sensor)
             if not field:
                 logging.warning(f"Неизвестный датчик: {sensor}")
                 return
@@ -164,31 +178,33 @@ class ModesExecutor(QObject):
             while self.running:
                 val = self.engine.last_data.get(field)
                 if val is None:
-                    QApplication.processEvents()
-                    time.sleep(0.2)
+                    time.sleep(0.5)
                     continue
 
                 if ((op == "<" and val < threshold) or
                     (op == ">" and val > threshold)):
                     logging.info(f"{sensor} достиг {val:.3f}")
                     break
-
-                QApplication.processEvents()
-                time.sleep(0.2)
+                time.sleep(0.5)
 
     # ------------------------------------------------------------------
     def _handle_set(self, parts):
         """
-        SET PRESSURE P2 USING VF FORMULA
+        SET PRESSURE <датчик> USING VF
+
+        Уставка давления отправляется командой 0x09 (SET_PRESSURE),
+        payload которой по протоколу — float32 (4 байта), поэтому
+        отправка идёт через Engine.set_pressure(), а не "сырым" байтом.
         """
         if len(parts) >= 5 and parts[1].upper() == "PRESSURE":
             target = parts[2].upper()
             if parts[3].upper() == "USING" and parts[4].upper() == "VF":
                 logging.info(f"Установка давления {target} с помощью клапана VF (по формуле)")
-                # TODO: здесь должен быть реальный алгоритм регулирования VF
-                self.engine.set_element_state("VF", 1)
+                # TODO: подставить реальное целевое давление по формуле,
+                # когда она будет определена; пока используем плейсхолдер.
+                self.engine.set_pressure(1.0)
                 time.sleep(1)
-                self.engine.set_element_state("VF", 0)
+                self.engine.set_pressure(0.0)
             else:
                 logging.warning(f"Неизвестная конструкция SET: {parts}")
         else:
@@ -202,8 +218,7 @@ class ModesExecutor(QObject):
         if len(parts) >= 4 and parts[2].upper() == "AS":
             sensor = parts[1].upper()
             varname = parts[3].upper()
-            name_map = {"P1": "MIDA", "P2": "Magdischarge", "P3": "ThermalIndicator"}
-            field = name_map.get(sensor)
+            field = SENSOR_FIELD_MAP.get(sensor)
             val = self.engine.last_data.get(field) if field else None
             if val is not None:
                 self.variables[varname] = val
@@ -225,6 +240,7 @@ class ModesExecutor(QObject):
             var = left.strip()
             formula = right.strip()
 
+            # заменяем имена переменных на их значения
             for k, v in self.variables.items():
                 formula = formula.replace(k, str(v))
 
@@ -238,7 +254,7 @@ class ModesExecutor(QObject):
 class ModesManager:
     def __init__(self, layout, engine, filepath="modes.txt"):
         self.layout = layout
-        self.filepath = resource_path(filepath)
+        self.filepath = filepath
         self.engine = engine
         self.programs = {}
         self.executor = ModesExecutor(engine)

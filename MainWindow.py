@@ -10,9 +10,6 @@ from ShematicWindow import SchematicWidget
 from ProtocolEditorWindow import ProtocolEditorWindow
 from EepromWindow import EepromWindow
 from ConfigWindow import ConfigWindow
-from LogWindow import LogWindow
-from SoftwareInfoWindow import SoftwareInfoWindow
-from LegendWindow import LegendWindow
 
 # ------------------------------------------------------------------------------------------------
 #                                  ОКНО НАСТРОЕК ПОДКЛЮЧЕНИЯ
@@ -78,6 +75,9 @@ class ConnectSettingsWindow(QWidget):
 
 
 class MainWindow(QMainWindow):
+    # Список значений EEPROM (int), полученный из eprom_read_response
+    eeprom_data_signal = pyqtSignal(list)
+
     def __init__(self, engine: Engine):
         super().__init__()
         self.setWindowTitle("SCADA UDAV")
@@ -118,8 +118,10 @@ class MainWindow(QMainWindow):
         basic_panel = QWidget()
         basic_layout = QVBoxLayout(basic_panel)
 
+
         self.modes_manager = ModesManager(
-            layout=basic_layout, engine=self.engine
+            layout=basic_layout,
+            engine=self.engine
         )
 
 
@@ -198,13 +200,8 @@ class MainWindow(QMainWindow):
         eeprom_menu.addAction("Прочитать").triggered.connect(self.ReadEeprom)
         eeprom_menu.addAction("Записать")
 
-        logs_menu = menubar.addMenu("Логи")
-        logs_menu.addAction("Открыть окно логов").triggered.connect(self.open_log_window)
+        menubar.addMenu("Логи")
         menubar.addMenu("Сгенерировать протокол поверки")
-
-        info_menu = menubar.addMenu("Сведения")
-        info_menu.addAction("Программное обеспечение").triggered.connect(self.open_software_info)
-        info_menu.addAction("Условные обозначения").triggered.connect(self.open_legend)
 
     def _save_meta(self):
         operator = self.operator_edit.text().strip()
@@ -280,17 +277,36 @@ class MainWindow(QMainWindow):
 
     # ---------- отображение данных ----------
     def display_data(self, data: dict):
-        if data["__packet__"] == "exchange_packet":
+        packet_name = data.get("__packet__")
+
+        if packet_name == "eprom_read_response":
+            # data["data"] — bytes, полученные согласно cmd 0x12 (см. Протокол.xlsx)
+            self.eeprom_data_signal.emit(list(data.get("data", b"")))
+            return
+
+        if packet_name == "error_packet":
+            self.display_error(
+                f"Ошибка {data.get('error_code')} на команду {data.get('cmd_id')}"
+            )
+            return
+
+        if packet_name == "exchange_packet":
+            # обновляем графики
             self.graph_panel.update_plots([
                 data.get("mida_pressure"),
                 data.get("magdischarge_pressure"),
                 data.get("thermal_pressure")
             ])
+            # обновляем схему
             self.update_schematic(data)
 
     def apply_valve_state(self, name: str, is_open: bool):
         """Единая точка применения реального состояния от Engine к схеме и кнопке"""
         status = "open" if is_open else "closed"
+
+        # синхронизируем локальное состояние Engine с реальным состоянием устройства
+        if name in self.engine.system_status:
+            self.engine.system_status[name] = 1 if is_open else 0
 
         schematic = self.schematic.items
         if name in schematic:
@@ -334,23 +350,10 @@ class MainWindow(QMainWindow):
 
     def ReadEeprom(self):
         self.w = EepromWindow()
-        self.w.eeprom_read_request.connect(self.engine.eeprom_read)
-        self.w.eeprom_write_request.connect(self.engine.eeprom_write)
-        self.engine.eeprom_data_received.connect(self.w.handle_data)
+        self.w.read_requested.connect(self.engine.read_eeprom)
+        self.eeprom_data_signal.connect(self.w.handle_data)
         self.w.show()
 
     def ReadConfig(self):
         self.w2 = ConfigWindow()
         self.w2.show()
-
-    def open_log_window(self):
-        self.log_window = LogWindow()
-        self.log_window.show()
-
-    def open_software_info(self):
-        self.software_info_window = SoftwareInfoWindow()
-        self.software_info_window.show()
-
-    def open_legend(self):
-        self.legend_window = LegendWindow()
-        self.legend_window.show()

@@ -1,6 +1,6 @@
 import math
 
-from PyQt5.QtCore import Qt, QPointF, pyqtSignal, QObject, QTimer, QRectF
+from PyQt5.QtCore import Qt, QPointF, pyqtSignal, QObject, QTimer
 from PyQt5.QtGui import QBrush, QColor, QPen, QFont, QPolygonF
 from PyQt5.QtWidgets import QGraphicsRectItem, QGraphicsScene, QGraphicsView, QGraphicsEllipseItem, QGraphicsLineItem, \
     QGraphicsTextItem, QGraphicsPolygonItem
@@ -106,30 +106,42 @@ class ValveSymbol(QObject, QGraphicsPolygonItem):
             self.status = new_status
             self.update_color()
 
-class PumpSymbol(QGraphicsRectItem):
+
+class PumpSymbol(QObject):
     clicked = pyqtSignal(str, str)  # (имя, действие)
 
     def __init__(self, name, center_x, center_y):
+        super().__init__()
         size = 40
-        super().__init__(center_x - size / 2, center_y - size / 2, size, size)
+        # ВАЖНО: PumpSymbol - обычный QObject (нужен только ради pyqtSignal).
+        # Видимые элементы - ОТДЕЛЬНЫЕ "чистые" QGraphicsItem без примеси
+        # QObject, точно как triangle1_item/triangle2_item у ValveSymbol.
+        # Если добавить в QGraphicsScene объект с двойным наследованием
+        # QObject+QGraphicsItem (scene.addItem(self)), PyQt5/sip иногда
+        # роняет процесс сегфолтом (SIGSEGV) при управлении временем
+        # жизни/событиями этого item'а - именно это происходило раньше.
         self.name = name
         self.status = "closed"
         self.command_queue = []
         self.size = size
 
+        self.rect_item = QGraphicsRectItem(center_x - size / 2, center_y - size / 2, size, size)
         self.circle = QGraphicsEllipseItem(center_x - size / 4, center_y - size / 4, size / 2, size / 2)
         self.label_item = QGraphicsTextItem(name)
         font = QFont(); font.setBold(True)
         self.label_item.setFont(font)
         self.label_item.setPos(center_x - size - 5, center_y - 10)
 
-        self.setAcceptHoverEvents(True)
-        self.setAcceptedMouseButtons(Qt.LeftButton)
-        self.mousePressEvent = self._on_click
+        self.rect_item.setAcceptedMouseButtons(Qt.LeftButton)
+        self.rect_item.mousePressEvent = self._on_click
+        # клик должен доходить и через кружок, который лежит поверх прямоугольника
+        self.circle.setAcceptedMouseButtons(Qt.LeftButton)
+        self.circle.mousePressEvent = self._on_click
+
         self.update_color()
 
     def add_to_scene(self, scene):
-        scene.addItem(self)
+        scene.addItem(self.rect_item)
         scene.addItem(self.circle)
         scene.addItem(self.label_item)
 
@@ -139,7 +151,7 @@ class PumpSymbol(QGraphicsRectItem):
             "waiting": QColor("yellow"),
             "open": QColor("lime")
         }
-        self.setBrush(QBrush(color_map[self.status]))
+        self.rect_item.setBrush(QBrush(color_map[self.status]))
         self.circle.setBrush(QBrush(color_map[self.status]))
 
     def _on_click(self, event):
@@ -152,6 +164,9 @@ class PumpSymbol(QGraphicsRectItem):
             self.status = "waiting"
 
         self.update_color()
+
+        if next_cmd:
+            self.clicked.emit(self.name, next_cmd)
 
     def apply_system_state(self, is_open: bool):
         """
@@ -232,63 +247,40 @@ class SchematicWidget(QGraphicsView):
         # Насосы
         self.items["NR"] = PumpSymbol("NR", 60, 220)
         self.items["NR"].add_to_scene(self.scene)
-        self.items["NI"] = PumpSymbol("NI", 140, 480)
+        self.items["NR"].clicked.connect(self._on_valve_clicked)
+
+        self.items["NI"] = PumpSymbol("NI", 140, 380)
         self.items["NI"].add_to_scene(self.scene)
+        self.items["NI"].clicked.connect(self._on_valve_clicked)
 
         # Клапаны
-        for st, name, cx, cy, orient in [("l","V1",140,440,'v'), ("l","V2",60,180,'v'),
-                                     ("l","V3",60,260,'v'), ("t","V4",180,100,'h'),
-                                     ("r","V5",140,140,'v'), ("t","V6",20,20,'v'),
-                                     ("t","V7",100,20,'v'), ("t","V8",260,100,'h'),
-                                     ("t","VF",300,100,'h')]:
-            valve = ValveSymbol(name, st, cx, cy, orient)
+        for name, cx, cy, orient in [("V1",140,340,'v'), ("V2",60,180,'v'),
+                                     ("V3",60,260,'v'), ("V4",180,100,'h'),
+                                     ("V5",140,140,'v'), ("V6",20,20,'v'),
+                                     ("V7",100,20,'v'), ("V8",260,100,'h'),
+                                     ("VF",300,100,'h')]:
+            valve = ValveSymbol(name, "t", cx, cy, orient)
             valve.add_to_scene(self.scene)
             valve.clicked.connect(self._on_valve_clicked)
             self.items[name] = valve
 
         # Вакуумные датчики
-        self.items["P1"] = VacuumGauge("P1", "t", 180, 400)
+        self.items["P1"] = VacuumGauge("P1", "t", 180, 300)
         self.items["P1"].add_to_scene(self.scene)
         self.items["P2"] = VacuumGauge("P2", "t", 220, 100)
         self.items["P2"].add_to_scene(self.scene)
         self.items["P3"] = VacuumGauge("P3", "t", 140, 60)
         self.items["P3"].add_to_scene(self.scene)
 
+        # Прямоугольники и линии
         self.items["CV1"] = QGraphicsRectItem(0, 40, 120, 120)
         self.items["CV1"].setBrush(QBrush(QColor("lightblue")))
         self.scene.addItem(self.items["CV1"])
-
-        # подпись внутри фигуры CV1
-        cv1_label = QGraphicsTextItem("CV1")
-        font = QFont()
-        font.setBold(True)
-        cv1_label.setFont(font)
-
-        rect = self.items["CV1"].rect()
-        text_rect = cv1_label.boundingRect()
-        cv1_label.setPos(
-            rect.center().x() - text_rect.width() / 2,
-            rect.center().y() - text_rect.height() / 2
-        )
-        self.scene.addItem(cv1_label)
-        self.draw_line(60, 280, 60, 400)
-        self.draw_line(160, 400, 60, 400)
-        self.draw_line(140, 420, 140, 160)
+        self.draw_line(60, 280, 60, 300)
+        self.draw_line(160, 300, 60, 300)
+        self.draw_line(140, 320, 140, 160)
         self.draw_line(140, 80, 140, 120)
         self.draw_line(120, 100, 160, 100)
-        self.draw_square(-10, -30, 340, 320)
-        self.draw_square(-10, 360, 340, 150)
-
-    def draw_square(self, x, y, width, height):
-        rect = QRectF(x, y, width, height)
-        item = self.scene.addRect(rect)
-
-        pen = QPen(Qt.red)
-        pen.setWidth(1)
-        pen.setStyle(Qt.DashLine)
-        item.setPen(pen)  # было rect.setPen(pen)
-        item.setBrush(QBrush(Qt.NoBrush))
-
 
     def draw_line(self, x1, y1, x2, y2):
         line = self.scene.addLine(x1, y1, x2, y2)
@@ -321,5 +313,3 @@ class SchematicWidget(QGraphicsView):
                 continue
             if hasattr(item, "update_color"):
                 item.update_color(state)
-
-
