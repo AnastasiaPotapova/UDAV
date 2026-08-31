@@ -1,6 +1,6 @@
 import math
 
-from PyQt5.QtCore import Qt, QPointF, pyqtSignal, QObject, QTimer
+from PyQt5.QtCore import Qt, QPointF, pyqtSignal, QObject, QTimer, QRectF
 from PyQt5.QtGui import QBrush, QColor, QPen, QFont, QPolygonF
 from PyQt5.QtWidgets import QGraphicsRectItem, QGraphicsScene, QGraphicsView, QGraphicsEllipseItem, QGraphicsLineItem, \
     QGraphicsTextItem, QGraphicsPolygonItem
@@ -105,7 +105,6 @@ class ValveSymbol(QObject, QGraphicsPolygonItem):
         if self.status != new_status:
             self.status = new_status
             self.update_color()
-
 
 class PumpSymbol(QObject):
     clicked = pyqtSignal(str, str)  # (имя, действие)
@@ -244,43 +243,65 @@ class SchematicWidget(QGraphicsView):
         self._build_scene()
 
     def _build_scene(self):
+        # Прямоугольники и линии
+        self.items["CV1"] = QGraphicsRectItem(0, 40, 120, 120)
+        self.items["CV1"].setBrush(QBrush(QColor("lightblue")))
+        self.scene.addItem(self.items["CV1"])
+
+        # подпись внутри фигуры CV1
+        cv1_label = QGraphicsTextItem("CV1")
+        font = QFont()
+        font.setBold(True)
+        cv1_label.setFont(font)
+
+        rect = self.items["CV1"].rect()
+        text_rect = cv1_label.boundingRect()
+        cv1_label.setPos(
+            rect.center().x() - text_rect.width() / 2,
+            rect.center().y() - text_rect.height() / 2
+        )
+        self.scene.addItem(cv1_label)
+
         # Насосы
         self.items["NR"] = PumpSymbol("NR", 60, 220)
         self.items["NR"].add_to_scene(self.scene)
-        self.items["NR"].clicked.connect(self._on_valve_clicked)
-
-        self.items["NI"] = PumpSymbol("NI", 140, 380)
+        self.items["NI"] = PumpSymbol("NI", 140, 480)
         self.items["NI"].add_to_scene(self.scene)
-        self.items["NI"].clicked.connect(self._on_valve_clicked)
 
         # Клапаны
-        for name, cx, cy, orient in [("V1",140,340,'v'), ("V2",60,180,'v'),
-                                     ("V3",60,260,'v'), ("V4",180,100,'h'),
-                                     ("V5",140,140,'v'), ("V6",20,20,'v'),
-                                     ("V7",100,20,'v'), ("V8",260,100,'h'),
-                                     ("VF",300,100,'h')]:
-            valve = ValveSymbol(name, "t", cx, cy, orient)
+        for st, name, cx, cy, orient in [("l", "V1", 140, 440, 'v'), ("l", "V2", 60, 180, 'v'),
+                                         ("l", "V3", 60, 260, 'v'), ("t", "V4", 180, 100, 'h'),
+                                         ("r", "V5", 140, 140, 'v'), ("t", "V6", 20, 20, 'v'),
+                                         ("t", "V7", 100, 20, 'v'), ("t", "V8", 260, 100, 'h'),
+                                         ("t", "VF", 300, 100, 'h')]:
+            valve = ValveSymbol(name, st, cx, cy, orient)
             valve.add_to_scene(self.scene)
             valve.clicked.connect(self._on_valve_clicked)
             self.items[name] = valve
 
         # Вакуумные датчики
-        self.items["P1"] = VacuumGauge("P1", "t", 180, 300)
+        self.items["P1"] = VacuumGauge("P1", "t", 180, 400)
         self.items["P1"].add_to_scene(self.scene)
         self.items["P2"] = VacuumGauge("P2", "t", 220, 100)
         self.items["P2"].add_to_scene(self.scene)
-        self.items["P3"] = VacuumGauge("P3", "t", 140, 60)
-        self.items["P3"].add_to_scene(self.scene)
 
-        # Прямоугольники и линии
-        self.items["CV1"] = QGraphicsRectItem(0, 40, 120, 120)
-        self.items["CV1"].setBrush(QBrush(QColor("lightblue")))
-        self.scene.addItem(self.items["CV1"])
-        self.draw_line(60, 280, 60, 300)
-        self.draw_line(160, 300, 60, 300)
-        self.draw_line(140, 320, 140, 160)
+        self.draw_line(60, 280, 60, 400)
+        self.draw_line(160, 400, 60, 400)
+        self.draw_line(140, 420, 140, 160)
         self.draw_line(140, 80, 140, 120)
         self.draw_line(120, 100, 160, 100)
+        self.draw_square(-10, -30, 340, 320)
+        self.draw_square(-10, 360, 340, 150)
+
+    def draw_square(self, x, y, width, height):
+        rect = QRectF(x, y, width, height)
+        item = self.scene.addRect(rect)
+
+        pen = QPen(Qt.red)
+        pen.setWidth(1)
+        pen.setStyle(Qt.DashLine)
+        item.setPen(pen)  # было rect.setPen(pen)
+        item.setBrush(QBrush(Qt.NoBrush))
 
     def draw_line(self, x1, y1, x2, y2):
         line = self.scene.addLine(x1, y1, x2, y2)

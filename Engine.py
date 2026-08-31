@@ -31,6 +31,65 @@ class Engine(QObject):
             "VF": 0
         }
 
+        self.last_data = {}
+
+
+        self.CONTROL_MAP = {
+            # Насосы
+            "NI": {
+                "cmd": "FORVACUUM_CONTROL",
+                "cmd_id": 0x02
+            },
+            "NR": {
+                "cmd": "TMN_CONTROL",
+                "cmd_id": 0x03
+            },
+
+            # Датчик (особый случай, не on/off)
+            "P2": {
+                "cmd": "MIDA_UNITS",
+                "cmd_id": 0x04
+            },
+
+            # Клапаны DU16
+            "V1": {
+                "cmd": "DU16_CONTROL",
+                "cmd_id": 0x06
+            },
+            "V3": {
+                "cmd": "DU16_CONTROL",
+                "cmd_id": 0x06
+            },
+            "V6": {
+                "cmd": "DU16_CONTROL",
+                "cmd_id": 0x06
+            },
+            "V7": {
+                "cmd": "DU16_CONTROL",
+                "cmd_id": 0x06
+            },
+
+            # Клапан DU63
+            "V2": {
+                "cmd": "DU63_CONTROL",
+                "cmd_id": 0x07
+            },
+
+            # Электромагнитные клапаны
+            "V4": {
+                "cmd": "ELECTRO_VALVE_CONTROL",
+                "cmd_id": 0x08
+            },
+            "V5": {
+                "cmd": "ELECTRO_VALVE_CONTROL",
+                "cmd_id": 0x08
+            },
+            "V8": {
+                "cmd": "ELECTRO_VALVE_CONTROL",
+                "cmd_id": 0x08
+            }
+        }
+
         #Информация для протокола
         self.operator = None
         self.installation = None
