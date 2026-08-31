@@ -33,6 +33,12 @@ class Engine(QObject):
 
         self.last_data = {}
 
+        # Р стат. - значение давления после статического расширения.
+        # Это не поле обменного пакета, а результат расчёта в сценарии
+        # ModesManager (см. modes.txt, сценарий "Статическое расширение"
+        # и ModesExecutor._handle_save/_handle_calc). None, пока расчёт
+        # ещё ни разу не выполнялся.
+        self.static_pressure = None
 
         self.CONTROL_MAP = {
             # Насосы
@@ -209,6 +215,10 @@ class Engine(QObject):
     def set_operator_info(self, operator: str, installation: str):
         self.operator = operator
         self.installation = installation
+
+    def set_static_pressure(self, value: float):
+        """Сохранить расчётное значение Р стат. (см. ModesExecutor)."""
+        self.static_pressure = value
 
     # ------------------------------------------------------------------
     # EEPROM

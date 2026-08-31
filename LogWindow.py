@@ -70,7 +70,7 @@ class LogTab(QWidget):
 class LogWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Логирование")
+        self.setWindowTitle("Журнал ошибок")
         self.resize(750, 500)
 
         layout = QVBoxLayout(self)
@@ -80,5 +80,5 @@ class LogWindow(QWidget):
         self.app_tab = LogTab(APP_LOG_FILE, app_qt_handler)
         self.controller_tab = LogTab(CONTROLLER_LOG_FILE, controller_qt_handler)
 
-        self.tabs.addTab(self.app_tab, "Лог приложения")
-        self.tabs.addTab(self.controller_tab, "Лог контроллера")
+        self.tabs.addTab(self.app_tab, "Ошибки приложения")
+        self.tabs.addTab(self.controller_tab, "Ошибки контроллера")

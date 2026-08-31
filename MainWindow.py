@@ -1,18 +1,21 @@
 import serial.tools.list_ports
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QStackedWidget, QVBoxLayout, QPushButton, QScrollArea, \
-    QMessageBox, QLabel, QComboBox, QLineEdit, QFormLayout
+from PyQt5.QtCore import pyqtSignal, QTimer, Qt
+from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QScrollArea, \
+    QMessageBox, QLabel, QComboBox, QLineEdit, QFrame
 
 from Engine import Engine
 from GraphWindow import GraphPanel
 from LegendWindow import LegendWindow
 from LogWindow import LogWindow
 from ModesManager import ModesManager
+from OperatorWindow import OperatorWindow
+from StatusIndicator import StatusIndicator
 from ShematicWindow import SchematicWidget
 from ProtocolEditorWindow import ProtocolEditorWindow
 from EepromWindow import EepromWindow
 from ConfigWindow import ConfigWindow
 from SoftwareInfoWindow import SoftwareInfoWindow
+from pressure_format import format_p1, format_p2, format_p3, format_pstat
 
 
 # ------------------------------------------------------------------------------------------------
@@ -95,78 +98,54 @@ class MainWindow(QMainWindow):
         # --- подписка на события от движка ---
         self.engine.packet_received.connect(self.display_data)
 
+        # самодиагностика: если билд UI и подписки прошли без исключений -
+        # считаем ПО готовым к работе (см. StatusIndicator, ТЗ п.6)
+        QTimer.singleShot(600, lambda: self.status_indicator.set_state("ok"))
+
     def init_ui(self):
 
         # ===== центральный виджет =====
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
+        root_layout = QVBoxLayout(central_widget)
 
-        self.work_control = QStackedWidget()
+        main_layout = QHBoxLayout()
+        root_layout.addLayout(main_layout, stretch=1)
 
-        # --- продвинутый режим ---
-        control_panel = QWidget()
-        control_layout = QVBoxLayout(control_panel)
-
-        self.valve_buttons = {}
-
-        for name in ("V1", "V2", "V3", "V4", "V5", "V8"):
-            btn = QPushButton(f"Открыть клапан {name}")
-            btn.clicked.connect(lambda _, n=name: self._on_valve_click(n))
-            control_layout.addWidget(btn)
-            self.valve_buttons[name] = btn
-
-        self.work_control.addWidget(control_panel)
-
-        # --- базовый режим ---
-        basic_panel = QWidget()
-        basic_layout = QVBoxLayout(basic_panel)
-
+        # ======================================================
+        # 1 СТОЛБЕЦ — готовые команды (сценарии из modes.txt)
+        # ======================================================
+        # Управление отдельными клапанами/насосами теперь ведётся только
+        # прямым нажатием на схему; здесь остаются только уже собранные
+        # (составные) команды - см. ТЗ п.1.
+        commands_panel = QWidget()
+        commands_layout = QVBoxLayout(commands_panel)
 
         self.modes_manager = ModesManager(
-            layout=basic_layout,
+            layout=commands_layout,
             engine=self.engine
         )
 
-
-        self.work_control.addWidget(basic_panel)
-
         scroll = QScrollArea()
-        scroll.setWidget(self.work_control)
+        scroll.setWidget(commands_panel)
         scroll.setWidgetResizable(True)
         scroll.setFixedWidth(220)
 
         main_layout.addWidget(scroll)
 
         # ======================================================
-        # 2 СТОЛБЕЦ — поля + схема
+        # 2 СТОЛБЕЦ — индикатор + схема
         # ======================================================
         middle_widget = QWidget()
         middle_layout = QVBoxLayout(middle_widget)
 
-        # --- поля ввода ---
-        form_layout = QFormLayout()
-
-        self.operator_edit = QLineEdit()
-        self.operator_edit.setPlaceholderText("Иванов Иван Иванович")
-
-        self.installation_edit = QLineEdit()
-        self.installation_edit.setPlaceholderText("Вакуумная установка №1")
-
-        form_layout.addRow("ФИО оператора:", self.operator_edit)
-        form_layout.addRow("Название установки:", self.installation_edit)
-
-        # --- кнопка сохранить ---
-        self.save_meta_btn = QPushButton("Сохранить")
-        self.save_meta_btn.setEnabled(False)  # изначально неактивна
-
-        form_layout.addRow(self.save_meta_btn)
-
-        middle_layout.addLayout(form_layout)
-
-        self.operator_edit.textChanged.connect(self._on_meta_changed)
-        self.installation_edit.textChanged.connect(self._on_meta_changed)
-        self.save_meta_btn.clicked.connect(self._save_meta)
+        # --- индикатор самодиагностики (ТЗ п.6) ---
+        indicator_row = QHBoxLayout()
+        indicator_row.addStretch()
+        self.status_indicator = StatusIndicator()
+        self.status_indicator.clicked.connect(self.open_log_window)
+        indicator_row.addWidget(self.status_indicator)
+        middle_layout.addLayout(indicator_row)
 
         # --- схематика ---
         self.schematic = SchematicWidget()
@@ -183,33 +162,67 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.graph_panel, stretch=1)
 
         # ======================================================
+        # НИЖНЯЯ ПАНЕЛЬ — текущие значения измерений (ТЗ п.3)
+        # ======================================================
+        root_layout.addLayout(self._build_values_bar())
+
+        # ======================================================
         # МЕНЮ
         # ======================================================
         menubar = self.menuBar()
 
         settings_menu = menubar.addMenu("Настройки")
         settings_menu.addAction("Подключение").triggered.connect(self.open_connect_settings)
+        settings_menu.addAction("Добавить оператора").triggered.connect(self.open_operator_window)
         settings_menu.addAction("Редактировать конфигурацию").triggered.connect(self.ReadConfig)
         settings_menu.addAction("Редактировать протокол").triggered.connect(self.open_protocol_editor)
-
-        mode_menu = menubar.addMenu("Режим работы")
-        mode_menu.addAction("Автоматический").triggered.connect(
-            lambda: self.work_control.setCurrentIndex(1)
-        )
-        mode_menu.addAction("Продвинутый").triggered.connect(
-            lambda: self.work_control.setCurrentIndex(0)
-        )
 
         eeprom_menu = menubar.addMenu("ЭСППЗУ")
         eeprom_menu.addAction("Прочитать").triggered.connect(self.ReadEeprom)
         eeprom_menu.addAction("Записать")
 
-        logs_menu = menubar.addMenu("Логи")
-        logs_menu.addAction("Открыть окно логов").triggered.connect(self.open_log_window)
+        logs_menu = menubar.addMenu("Журнал ошибок")
+        logs_menu.addAction("Открыть").triggered.connect(self.open_log_window)
 
         info_menu = menubar.addMenu("Сведения")
         info_menu.addAction("Программное обеспечение").triggered.connect(self.open_software_info)
         info_menu.addAction("Условные обозначения").triggered.connect(self.open_legend)
+
+    def _build_values_bar(self):
+        """Строка с текущими значениями Р1, Р2, Р3, Р стат. внизу экрана (ТЗ п.3)."""
+        bar_layout = QHBoxLayout()
+
+        self.value_labels = {}
+        specs = [
+            ("P1", "Р1"),
+            ("P2", "Р2"),
+            ("P3", "Р3"),
+            ("PSTAT", "Р стат."),
+        ]
+        for key, caption in specs:
+            box = QFrame()
+            box.setFrameShape(QFrame.StyledPanel)
+            box_layout = QHBoxLayout(box)
+
+            title = QLabel(f"{caption}:")
+            title.setStyleSheet("font-weight: bold;")
+            value = QLabel("—")
+            value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+            box_layout.addWidget(title)
+            box_layout.addWidget(value)
+
+            self.value_labels[key] = value
+            bar_layout.addWidget(box)
+
+        return bar_layout
+
+    def _update_values_bar(self, data: dict):
+        """Обновляет нижнюю панель значений по данным обменного пакета."""
+        self.value_labels["P1"].setText(format_p1(data.get("mida_pressure")))
+        self.value_labels["P2"].setText(format_p2(data.get("magdischarge_pressure")))
+        self.value_labels["P3"].setText(format_p3(data.get("thermal_pressure")))
+        self.value_labels["PSTAT"].setText(format_pstat(self.engine.static_pressure))
 
     def ReadEeprom(self):
         self.w = EepromWindow()
@@ -218,25 +231,17 @@ class MainWindow(QMainWindow):
         self.engine.eeprom_data_received.connect(self.w.handle_data)
         self.w.show()
 
-    def _save_meta(self):
-        operator = self.operator_edit.text().strip()
-        installation = self.installation_edit.text().strip()
-
-        if not operator or not installation:
-            # можно заменить на QMessageBox, если хочешь строго
-            return
-
-        # ===== отправка в Engine =====
-        self.engine.set_operator_info(
-            operator=operator,
-            installation=installation
+    # ---------- оператор (ТЗ п.2) ----------
+    def open_operator_window(self):
+        self.operator_window = OperatorWindow(
+            operator=self.engine.operator or "",
+            installation=self.engine.installation or "",
         )
+        self.operator_window.operator_saved.connect(self._save_meta)
+        self.operator_window.show()
 
-        # ===== блокируем кнопку =====
-        self.save_meta_btn.setEnabled(False)
-
-    def _on_meta_changed(self):
-        self.save_meta_btn.setEnabled(True)
+    def _save_meta(self, operator: str, installation: str):
+        self.engine.set_operator_info(operator=operator, installation=installation)
 
     # ---------- команды на клапаны ----------
 
@@ -247,24 +252,7 @@ class MainWindow(QMainWindow):
             item.status = "waiting"
             item.update_color()
 
-        self._update_valve_button(name, "waiting")
         self.engine.request_state_change(name)
-
-    def _update_valve_button(self, name: str, status: str):
-        """Обновляет текст и активность кнопки клапана по статусу (closed/waiting/open)"""
-        btn = self.valve_buttons.get(name)
-        if not btn:
-            return
-
-        if status == "closed":
-            btn.setText(f"Открыть клапан {name}")
-            btn.setEnabled(True)
-        elif status == "waiting":
-            btn.setText(f"Отправлено... {name}")
-            btn.setEnabled(False)
-        elif status == "open":
-            btn.setText(f"Закрыть клапан {name}")
-            btn.setEnabled(True)
 
     # ---------- подключение ----------
 
@@ -274,10 +262,16 @@ class MainWindow(QMainWindow):
         self.conn_win.show()
 
     def start_serial(self, port, baud, timeout):
-        self.engine.serial.port_name = port
-        self.engine.serial.baudrate = baud
-        self.engine.serial.timeout = timeout
-        self.engine.open_serial()
+        try:
+            self.engine.serial.port_name = port
+            self.engine.serial.baudrate = baud
+            self.engine.serial.timeout = timeout
+            self.engine.open_serial()
+        except Exception as e:
+            self.status_indicator.set_state("error")
+            self.display_error(f"Не удалось открыть порт {port}: {e}")
+            self.update_connection_status(False)
+            return
         self.update_connection_status(True)
 
     def stop_serial(self):
@@ -289,17 +283,12 @@ class MainWindow(QMainWindow):
         postfix = " (подключено)" if connected else " (нет подключения)"
         self.setWindowTitle("SCADA NIIM" + postfix)
 
-
     # ---------- отображение данных ----------
     def display_data(self, data: dict):
         packet_name = data.get("__packet__")
 
-        if packet_name == "eprom_read_response":
-            # data["data"] — bytes, полученные согласно cmd 0x12 (см. Протокол.xlsx)
-            self.eeprom_data_signal.emit(list(data.get("data", b"")))
-            return
-
         if packet_name == "error_packet":
+            self.status_indicator.set_state("error")
             self.display_error(
                 f"Ошибка {data.get('error_code')} на команду {data.get('cmd_id')}"
             )
@@ -314,11 +303,11 @@ class MainWindow(QMainWindow):
             ])
             # обновляем схему
             self.update_schematic(data)
+            # обновляем нижнюю панель значений
+            self._update_values_bar(data)
 
     def apply_valve_state(self, name: str, is_open: bool):
-        """Единая точка применения реального состояния от Engine к схеме и кнопке"""
-        status = "open" if is_open else "closed"
-
+        """Единая точка применения реального состояния от Engine к схеме"""
         # синхронизируем локальное состояние Engine с реальным состоянием устройства
         if name in self.engine.system_status:
             self.engine.system_status[name] = 1 if is_open else 0
@@ -326,8 +315,6 @@ class MainWindow(QMainWindow):
         schematic = self.schematic.items
         if name in schematic:
             schematic[name].apply_system_state(is_open)
-
-        self._update_valve_button(name, status)
 
     def update_schematic(self, data: dict):
         if "forvacuum_state" in data:

@@ -13,7 +13,7 @@ CLOSE V8
 CONFIRM "Герметичность системы проверена?"
 
 # ======================================
-[ПЕРВЫЙ ЗАПУСК]
+[Подготовка к измерениям]
 OPEN V4
 OPEN V8
 CHECK P1
@@ -22,10 +22,10 @@ ON NI
 OPEN V1
 OPEN V3
 OPEN V2
-WAIT UNTIL P1 < 100 AND P2 < 100
+WAIT UNTIL P1 < 100
 ON NR
-WAIT TIME 300
-ON P3
+WAIT 300
+CHECK P3
 IF P3 < 0.01 THEN MESSAGE "Давление удовлетворительное, можно приступать к поверке"
 
 # ======================================
@@ -69,7 +69,7 @@ OFF NI
 MESSAGE "Система остановлена. Отключите питание."
 
 # ======================================
-[ПОВЕРКА СТАТИЧЕСКОГО РАСШИРЕНИЯ]
+[Статическое расширение]
 CLOSE V4
 OPEN V8
 #SET PRESSURE P2 USING VF FORMULA
@@ -78,8 +78,9 @@ CLOSE V8
 SAVE P2 AS P2_BEFORE
 CLOSE V2
 OPEN V4
-WAIT TIME 10
+WAIT 10
 SAVE P2 AS P2_AFTER
+SAVE P2 AS PSTAT
 CALC K = P2_AFTER / P2_BEFORE
 MESSAGE "Расчитано значение K = {K}"
 

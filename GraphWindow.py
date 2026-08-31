@@ -26,7 +26,7 @@ class GraphPanel(QWidget):
         self.axes = []
         self.lines = []
         self.event_markers = []  # Хранит маркеры событий для каждого графика
-        self.graph_name = ["МИДА", "Магниторазрядный", "Тепловой"]
+        self.graph_name = ["МИДА-ДА-15 (Р1)", "МИДА-15 (Р2)", "СЕНСОР-МАГНЕТРОН (Р3)"]
 
         for i in range(3):
             # Создаём фигуру и оси
@@ -38,7 +38,7 @@ class GraphPanel(QWidget):
             ax.yaxis.tick_right()
             ax.yaxis.set_label_position("right")
             ax.xaxis.set_visible(False)
-            ax.set_title(f"График {self.graph_name[i]}")
+            ax.set_title(self.graph_name[i])
 
             # Инициализируем линию графика
             line, = ax.plot([], [], color='blue')

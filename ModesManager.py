@@ -223,6 +223,8 @@ class ModesExecutor(QObject):
             if val is not None:
                 self.variables[varname] = val
                 logging.info(f"Сохранено {sensor}={val:.3f} как {varname}")
+                if varname in ("PSTAT", "P_STAT", "PCT"):
+                    self.engine.set_static_pressure(val)
             else:
                 logging.warning(f"Не удалось сохранить {sensor}: данных нет")
         else:
@@ -246,6 +248,8 @@ class ModesExecutor(QObject):
 
             result = eval(formula)
             self.variables[var] = result
+            if var.upper() in ("PSTAT", "P_STAT", "PCT"):
+                self.engine.set_static_pressure(result)
             logging.info(f"{var} = {result:.5f}")
         except Exception as e:
             logging.warning(f"Ошибка вычисления CALC: {e}")
