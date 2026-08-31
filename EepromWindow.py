@@ -6,9 +6,13 @@ class EepromWindow(QWidget):
     eeprom_read_request = pyqtSignal(int, int)   # address, num_bytes
     eeprom_write_request = pyqtSignal(int, bytes)  # address, data
 
-    def __init__(self):
+    def __init__(self, is_connected=None):
         super().__init__()
         self.setWindowTitle("Данные EEPROM")
+        # is_connected: необязательный callable() -> bool, чтобы явно
+        # сказать пользователю "нет подключения" вместо тихого бездействия
+        # (см. MainWindow.ReadEeprom)
+        self.is_connected = is_connected
         layout = QVBoxLayout(self)
         self.setLayout(layout)
 
@@ -62,6 +66,10 @@ class EepromWindow(QWidget):
         self.status_label.setText(f"Прочитано {len(data_list)} байт")
 
     def read_eeprom_command(self):
+        if self.is_connected is not None and not self.is_connected():
+            self.status_label.setText("Ошибка: нет подключения к порту (Настройки -> Подключение)")
+            return
+
         try:
             start = int(self.start_input.text())
             end = int(self.end_input.text())
@@ -80,6 +88,10 @@ class EepromWindow(QWidget):
         self.eeprom_read_request.emit(start, count)
 
     def write_eeprom_command(self):
+        if self.is_connected is not None and not self.is_connected():
+            self.status_label.setText("Ошибка: нет подключения к порту (Настройки -> Подключение)")
+            return
+
         try:
             address = int(self.write_address_input.text())
             if address < 0:

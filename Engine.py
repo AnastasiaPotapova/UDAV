@@ -11,7 +11,7 @@ from resource_path import resource_path
 
 class Engine(QObject):
     packet_received = pyqtSignal(dict)
-    eeprom_data_received = pyqtSignal(dict)
+    eeprom_data_received = pyqtSignal(list)
 
     # Группы клапанов, состояние которых кодируется одним битовым полем
     DU16_VALVES = ["V1", "V3", "V6", "V7"]
@@ -252,5 +252,3 @@ class Engine(QObject):
                 self.last_data = pkt
 
             self.packet_received.emit(pkt)
-
-

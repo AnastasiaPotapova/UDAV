@@ -162,9 +162,9 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.graph_panel, stretch=1)
 
         # ======================================================
-        # НИЖНЯЯ ПАНЕЛЬ — текущие значения измерений (ТЗ п.3)
+        # СРЕДНЯЯ НИЖНЯЯ ПАНЕЛЬ — текущие значения измерений (ТЗ п.3)
         # ======================================================
-        root_layout.addLayout(self._build_values_bar())
+        middle_layout.addLayout(self._build_values_bar())
 
         # ======================================================
         # МЕНЮ
@@ -178,8 +178,7 @@ class MainWindow(QMainWindow):
         settings_menu.addAction("Редактировать протокол").triggered.connect(self.open_protocol_editor)
 
         eeprom_menu = menubar.addMenu("ЭСППЗУ")
-        eeprom_menu.addAction("Прочитать").triggered.connect(self.ReadEeprom)
-        eeprom_menu.addAction("Записать")
+        eeprom_menu.addAction("Открыть настройки").triggered.connect(self.ReadEeprom)
 
         logs_menu = menubar.addMenu("Журнал ошибок")
         logs_menu.addAction("Открыть").triggered.connect(self.open_log_window)
@@ -225,7 +224,7 @@ class MainWindow(QMainWindow):
         self.value_labels["PSTAT"].setText(format_pstat(self.engine.static_pressure))
 
     def ReadEeprom(self):
-        self.w = EepromWindow()
+        self.w = EepromWindow(is_connected=lambda: self.connected)
         self.w.eeprom_read_request.connect(self.engine.eeprom_read)
         self.w.eeprom_write_request.connect(self.engine.eeprom_write)
         self.engine.eeprom_data_received.connect(self.w.handle_data)

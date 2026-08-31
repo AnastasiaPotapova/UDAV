@@ -70,7 +70,7 @@ class SerialEngine:
     # --- отправка данных ---
     def send(self, data: bytes):
         """Кладём данные в очередь на отправку"""
-        print(f"[RX RAW] {data.hex()}")
+        app_logger.debug(f"TX queued: {data.hex()}")
         self.send_queue.put(data)
 
     # --- внутренние потоки ---
