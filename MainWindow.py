@@ -363,35 +363,9 @@ class MainWindow(QMainWindow):
         self.protocol_window = ProtocolEditorWindow()
         self.protocol_window.show()
 
-    def eeprom_read(self, address: int, num_bytes: int):
-        app_logger.info(f"eeprom_read(address={address}, num_bytes={num_bytes})")
-        pkt_bytes = self.protocol.build_eprom_read(address, num_bytes)
-        self.serial.send(pkt_bytes)
-
-    def eeprom_write(self, address: int, data: bytes):
-        app_logger.info(f"eeprom_write(address={address}, data={data.hex()})")
-        pkt_bytes = self.protocol.build_eprom_write(address, data)
-        self.serial.send(pkt_bytes)
-
     def ReadConfig(self):
         self.w2 = ConfigWindow()
         self.w2.show()
-
-    def _feed_protocol(self, data: bytes):
-        controller_logger.debug(f"RX RAW: {data.hex()}")
-
-        packets = self.protocol.feed(data)
-        for pkt in packets:
-            app_logger.debug(f"Распакован пакет: {pkt}")
-            self._log_controller_packet(pkt)
-
-            if pkt.get("__packet__") == "eprom_read_response":
-                raw_bytes = pkt.get("data", b"")
-                app_logger.info(f"EEPROM прочитано {len(raw_bytes)} байт")
-                self.eeprom_data_received.emit(list(raw_bytes))
-                continue  # не пробрасываем в общий packet_received
-
-            self.packet_received.emit(pkt)
 
     def open_software_info(self):
         self.software_info_window = SoftwareInfoWindow()

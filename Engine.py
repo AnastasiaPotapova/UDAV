@@ -97,15 +97,6 @@ class Engine(QObject):
         # Последний разобранный пакет опроса (для ModesManager: CHECK/WAIT/SAVE)
         self.last_data = {}
 
-    def _feed_protocol(self, data: bytes):
-        packets = self.protocol.feed(data)
-        for pkt in packets:
-            #print(f"[ENGINE] New packet: {pkt}")
-            if pkt.get("__packet__") == "exchange_packet":
-                self.last_data = pkt
-            print(pkt.get('electro_valves'))
-            self.packet_received.emit(pkt)
-
     def set_serial_settings(self, port: str, baud: int, timeout: float):
         self.serial.set_port_settings(port, baud, timeout)
 
@@ -239,13 +230,16 @@ class Engine(QObject):
         packets = self.protocol.feed(data)
         for pkt in packets:
             app_logger.debug(f"Распакован пакет: {pkt}")
-            self._log_controller_packet(pkt)
 
             if pkt.get("__packet__") == "eprom_read_response":
                 raw_bytes = pkt.get("data", b"")
                 app_logger.info(f"EEPROM прочитано {len(raw_bytes)} байт")
                 self.eeprom_data_received.emit(list(raw_bytes))
                 continue  # не пробрасываем в общий packet_received
+
+            if pkt.get("__packet__") == "exchange_packet":
+                # сохраняем последний опрос для ModesManager (CHECK/WAIT/SAVE)
+                self.last_data = pkt
 
             self.packet_received.emit(pkt)
 
