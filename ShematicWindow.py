@@ -284,6 +284,8 @@ class SchematicWidget(QGraphicsView):
         self.items["P1"].add_to_scene(self.scene)
         self.items["P2"] = VacuumGauge("P2", "t", 220, 100)
         self.items["P2"].add_to_scene(self.scene)
+        self.items["P3"] = VacuumGauge("P3", "t", 140, 60)
+        self.items["P3"].add_to_scene(self.scene)
 
         self.draw_line(60, 280, 60, 400)
         self.draw_line(160, 400, 60, 400)

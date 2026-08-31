@@ -139,8 +139,15 @@ class MainWindow(QMainWindow):
         middle_widget = QWidget()
         middle_layout = QVBoxLayout(middle_widget)
 
-        # --- индикатор самодиагностики (ТЗ п.6) ---
+        # --- индикатор самодиагностики (ТЗ п.6) + кнопка вкл/выкл установки ---
         indicator_row = QHBoxLayout()
+
+        self.power_btn = QPushButton()
+        self.power_btn.setFixedWidth(180)
+        self.power_btn.clicked.connect(self._on_power_clicked)
+        indicator_row.addWidget(self.power_btn)
+        self._update_power_button()
+
         indicator_row.addStretch()
         self.status_indicator = StatusIndicator()
         self.status_indicator.clicked.connect(self.open_log_window)
@@ -241,6 +248,22 @@ class MainWindow(QMainWindow):
 
     def _save_meta(self, operator: str, installation: str):
         self.engine.set_operator_info(operator=operator, installation=installation)
+
+    def _on_power_clicked(self):
+        self.engine.toggle_system_enabled()
+        self._update_power_button()
+
+    def _update_power_button(self):
+        if self.engine.system_enabled:
+            self.power_btn.setText("Выключить установку")
+            self.power_btn.setStyleSheet(
+                "background-color: #2ecc71; font-weight: bold;"
+            )
+        else:
+            self.power_btn.setText("Включить установку")
+            self.power_btn.setStyleSheet(
+                "background-color: #e74c3c; color: white; font-weight: bold;"
+            )
 
     # ---------- команды на клапаны ----------
 

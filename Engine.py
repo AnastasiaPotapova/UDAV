@@ -33,6 +33,11 @@ class Engine(QObject):
 
         self.last_data = {}
 
+        # Включена ли установка целиком (cmd 0x01, SYSTEM_ENABLE).
+        # Раньше эта команда была определена в протоколе, но нигде не
+        # отправлялась - добавлена отдельная кнопка включения/выключения.
+        self.system_enabled = False
+
         # Р стат. - значение давления после статического расширения.
         # Это не поле обменного пакета, а результат расчёта в сценарии
         # ModesManager (см. modes.txt, сценарий "Статическое расширение"
@@ -139,6 +144,14 @@ class Engine(QObject):
     def set_pressure(self, pressure_pa: float):
         """Уставка давления через клапан VF (cmd 0x09, payload float32)."""
         self.send_control("SET_PRESSURE", float(pressure_pa))
+
+    def set_system_enabled(self, enabled: bool):
+        """Включение/выключение установки целиком (cmd 0x01, SYSTEM_ENABLE)."""
+        self.system_enabled = enabled
+        self.send_control("SYSTEM_ENABLE", 1 if enabled else 0)
+
+    def toggle_system_enabled(self):
+        self.set_system_enabled(not self.system_enabled)
 
     def set_mida_units(self, torr: bool):
         """Смена единиц измерения датчика P2 (cmd 0x04): 0 - Па, 1 - Торр."""
