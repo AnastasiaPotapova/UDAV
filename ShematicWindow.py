@@ -269,10 +269,10 @@ class SchematicWidget(QGraphicsView):
         self.items["NI"].add_to_scene(self.scene)
 
         # Клапаны
-        for st, name, cx, cy, orient in [("l", "V1", 140, 440, 'v'), ("l", "V2", 60, 180, 'v'),
-                                         ("l", "V3", 60, 260, 'v'), ("t", "V4", 180, 100, 'h'),
-                                         ("r", "V5", 140, 140, 'v'), ("t", "V6", 20, 20, 'v'),
-                                         ("t", "V7", 100, 20, 'v'), ("t", "V8", 260, 100, 'h'),
+        for st, name, cx, cy, orient in [("l", "V3", 140, 440, 'v'), ("l", "V2", 60, 180, 'v'),
+                                         ("l", "V1", 60, 260, 'v'), ("t", "V8", 180, 100, 'h'),
+                                         ("r", "V4", 140, 140, 'v'), ("t", "V6", 20, 20, 'v'),
+                                         ("t", "V7", 100, 20, 'v'), ("t", "V5", 260, 100, 'h'),
                                          ("t", "VF", 300, 100, 'h')]:
             valve = ValveSymbol(name, st, cx, cy, orient)
             valve.add_to_scene(self.scene)
