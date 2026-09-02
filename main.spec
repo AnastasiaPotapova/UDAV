@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('protocol.json', '.'), ('modes.txt', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
