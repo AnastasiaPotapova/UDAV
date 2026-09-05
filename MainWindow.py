@@ -1,3 +1,5 @@
+import logging
+
 import serial.tools.list_ports
 from PyQt5.QtCore import pyqtSignal, QTimer, Qt
 from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QScrollArea, \
@@ -7,8 +9,8 @@ from Engine import Engine
 from GraphWindow import GraphPanel
 from LegendWindow import LegendWindow
 from LogWindow import LogWindow
-from ModesManager import ModesManager
 from OperatorWindow import OperatorWindow
+from PressureWindow import PressureSetWindow
 from StatusIndicator import StatusIndicator
 from ShematicWindow import SchematicWidget
 from ProtocolEditorWindow import ProtocolEditorWindow
@@ -113,18 +115,32 @@ class MainWindow(QMainWindow):
         root_layout.addLayout(main_layout, stretch=1)
 
         # ======================================================
-        # 1 СТОЛБЕЦ — готовые команды (сценарии из modes.txt)
+        # 1 СТОЛБЕЦ — команды (ТЗ_к_ПО_2.docx, п.1)
         # ======================================================
-        # Управление отдельными клапанами/насосами теперь ведётся только
-        # прямым нажатием на схему; здесь остаются только уже собранные
-        # (составные) команды - см. ТЗ п.1.
+        # По ТЗ_к_ПО_2.docx, п.1, в левой области остаются ровно три кнопки:
+        # "Запуск", "Установка давления", "Остановка". Набор составных
+        # сценариев, который раньше собирался автоматически из modes.txt
+        # (ModesManager/ModesExecutor), этим же пунктом убран.
+        #
+        # Логику самих процедур "Запуск"/"Остановка" опишет Александр
+        # отдельно, поэтому пока это заглушки без всплывающих окон - ТЗ
+        # прямо просит здесь никаких доп. окон не показывать.
         commands_panel = QWidget()
         commands_layout = QVBoxLayout(commands_panel)
 
-        self.modes_manager = ModesManager(
-            layout=commands_layout,
-            engine=self.engine
-        )
+        self.start_btn = QPushButton("Запуск")
+        self.start_btn.clicked.connect(self._on_start_clicked)
+        commands_layout.addWidget(self.start_btn)
+
+        self.set_pressure_btn = QPushButton("Установка давления")
+        self.set_pressure_btn.clicked.connect(self.open_pressure_window)
+        commands_layout.addWidget(self.set_pressure_btn)
+
+        self.stop_btn = QPushButton("Остановка")
+        self.stop_btn.clicked.connect(self._on_stop_clicked)
+        commands_layout.addWidget(self.stop_btn)
+
+        commands_layout.addStretch()
 
         scroll = QScrollArea()
         scroll.setWidget(commands_panel)
@@ -147,6 +163,10 @@ class MainWindow(QMainWindow):
         self.power_btn.clicked.connect(self._on_power_clicked)
         indicator_row.addWidget(self.power_btn)
         self._update_power_button()
+        # ТЗ_к_ПО_2.docx, п.3: кнопку "Включить установку" пока убрать из
+        # интерфейса ("вернём, когда она заработает") - код и сигналы
+        # оставляем нетронутыми, чтобы включить обратно одной строкой.
+        self.power_btn.hide()
 
         indicator_row.addStretch()
         self.status_indicator = StatusIndicator()
@@ -248,6 +268,28 @@ class MainWindow(QMainWindow):
 
     def _save_meta(self, operator: str, installation: str):
         self.engine.set_operator_info(operator=operator, installation=installation)
+
+    # ---------- команды левой панели (ТЗ_к_ПО_2.docx, п.1 и п.2) ----------
+    def _on_start_clicked(self):
+        """Заглушка кнопки "Запуск" - логику опишет Александр отдельно
+        (ТЗ_к_ПО_2.docx, п.1). Без всплывающих окон."""
+        logging.info('Кнопка "Запуск": процедура ещё не определена (см. ТЗ п.1)')
+
+    def _on_stop_clicked(self):
+        """Заглушка кнопки "Остановка" - логику опишет Александр отдельно
+        (ТЗ_к_ПО_2.docx, п.1). Без всплывающих окон."""
+        logging.info('Кнопка "Остановка": процедура ещё не определена (см. ТЗ п.1)')
+
+    def open_pressure_window(self):
+        """Окно "Установка давления" (ТЗ_к_ПО_2.docx, п.2)."""
+        self.pressure_window = PressureSetWindow()
+        self.pressure_window.pressure_confirmed.connect(self._on_pressure_confirmed)
+        self.pressure_window.show()
+
+    def _on_pressure_confirmed(self, value: float):
+        """По "Ок" в окне установки давления сразу запускаем процесс
+        расширения - без дополнительного окна-подтверждения (ТЗ п.2)."""
+        self.engine.set_pressure(value)
 
     def _on_power_clicked(self):
         self.engine.toggle_system_enabled()

@@ -39,10 +39,11 @@ class Engine(QObject):
         self.system_enabled = False
 
         # Р стат. - значение давления после статического расширения.
-        # Это не поле обменного пакета, а результат расчёта в сценарии
-        # ModesManager (см. modes.txt, сценарий "Статическое расширение"
-        # и ModesExecutor._handle_save/_handle_calc). None, пока расчёт
-        # ещё ни разу не выполнялся.
+        # Это не поле обменного пакета, а результат расчёта, который
+        # ожидается внутри будущей процедуры "Запуск"/"Остановка" (см.
+        # ТЗ_к_ПО_2.docx, п.1 - её логику опишет Александр отдельно).
+        # set_static_pressure() ниже уже готов к использованию, но пока
+        # его никто не вызывает, поэтому значение остаётся None.
         self.static_pressure = None
 
         self.CONTROL_MAP = {
@@ -105,7 +106,8 @@ class Engine(QObject):
         self.operator = None
         self.installation = None
 
-        # Последний разобранный пакет опроса (для ModesManager: CHECK/WAIT/SAVE)
+        # Последний разобранный пакет опроса (для будущей логики "Запуск"/
+        # "Остановка", см. комментарий у self.static_pressure выше)
         self.last_data = {}
 
     def set_serial_settings(self, port: str, baud: int, timeout: float):
@@ -131,7 +133,7 @@ class Engine(QObject):
         self._send_element_command(name, target)
 
     # ------------------------------------------------------------------
-    # Явная установка состояния (используется ModesManager и UI)
+    # Явная установка состояния (используется UI)
     # ------------------------------------------------------------------
     def set_valve(self, name: str, is_open: bool):
         """Явно установить состояние клапана (OPEN/CLOSE)."""
@@ -230,7 +232,7 @@ class Engine(QObject):
         self.installation = installation
 
     def set_static_pressure(self, value: float):
-        """Сохранить расчётное значение Р стат. (см. ModesExecutor)."""
+        """Сохранить расчётное значение Р стат."""
         self.static_pressure = value
 
     # ------------------------------------------------------------------
@@ -261,7 +263,7 @@ class Engine(QObject):
                 continue  # не пробрасываем в общий packet_received
 
             if pkt.get("__packet__") == "exchange_packet":
-                # сохраняем последний опрос для ModesManager (CHECK/WAIT/SAVE)
+                # сохраняем последний опрос датчиков (см. self.last_data выше)
                 self.last_data = pkt
 
             self.packet_received.emit(pkt)

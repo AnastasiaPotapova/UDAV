@@ -1,8 +1,28 @@
+import math
 from collections import deque
+
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from matplotlib.lines import Line2D
+from matplotlib.ticker import FixedLocator, FuncFormatter, NullLocator
+
+from pressure_format import format_p1, format_p2, format_p3
+
+# Верхние индексы для компактной подписи делений шкалы вида "1*10^3" -> "1·10³"
+_SUPERSCRIPTS = str.maketrans("0123456789-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁻")
+
+
+def _log_tick_label(value: float) -> str:
+    """Подпись деления логарифмической шкалы в стиле ТЗ_к_ПО_2.docx, п.4:
+    "0,1", "1", "10", "100", "1·10³", "1·10⁵" (запятая - десятичный
+    разделитель, большие/малые числа - в виде 1·10^N)."""
+    if value <= 0:
+        return "0"
+    exp = round(math.log10(value))
+    if -2 <= exp <= 2:
+        text = f"{value:g}"
+        return text.replace(".", ",")
+    return f"1·10{str(exp).translate(_SUPERSCRIPTS)}"
 
 
 class GraphPanel(QWidget):
@@ -12,6 +32,20 @@ class GraphPanel(QWidget):
         # Настройки графиков
         self.MAX_POINTS = 100  # Максимальное количество точек на графике
         self.UPDATE_INTERVAL = 100  # Интервал обновления (мс)
+
+        self.graph_name = ["МИДА-ДА-15 (Р1)", "МИДА-15 (Р2)", "СЕНСОР-МАГНЕТРОН (Р3)"]
+
+        # Диапазоны измерений и деления шкалы - см. ТЗ_к_ПО_2.docx, п.4.
+        # У Р1 и Р2 диапазон и отметки совпадают (от 1Е-1 до 1Е5), у Р3 -
+        # свой набор отметок (от 1Е-3 до 100). Шкала логарифмическая, т.к.
+        # диапазон измерений охватывает несколько порядков величины - это
+        # и есть "динамичное" масштабирование, о котором просит ТЗ: график
+        # сразу читаем и на 0,1 Па, и на 100 000 Па, без ручной перенастройки.
+        self.axis_specs = [
+            {"ylim": (1e-1, 1e5), "yticks": [1e-1, 1, 10, 100, 1e3, 1e5], "fmt": format_p1},
+            {"ylim": (1e-1, 1e5), "yticks": [1e-1, 1, 10, 100, 1e3, 1e5], "fmt": format_p2},
+            {"ylim": (1e-3, 100), "yticks": [1e-3, 1e-2, 1e-1, 1, 10, 100], "fmt": format_p3},
+        ]
 
         # Инициализация данных для трёх графиков
         self.data = [deque(maxlen=self.MAX_POINTS) for _ in range(3)]
@@ -25,42 +59,74 @@ class GraphPanel(QWidget):
         self.canvases = []
         self.axes = []
         self.lines = []
+        self.value_texts = []  # подпись текущего значения на каждом графике (ТЗ п.4)
         self.event_markers = []  # Хранит маркеры событий для каждого графика
-        self.graph_name = ["МИДА-ДА-15 (Р1)", "МИДА-15 (Р2)", "СЕНСОР-МАГНЕТРОН (Р3)"]
 
         for i in range(3):
-            # Создаём фигуру и оси
-            fig = Figure(figsize=(8, 3))
+            spec = self.axis_specs[i]
+
+            # Создаём фигуру и оси. constrained_layout сам пересчитывает
+            # поля при каждой перерисовке - без него подписи левой шкалы
+            # обрезаются, когда Qt сжимает канву уже, чем исходный figsize
+            # (актуально теперь, когда шкала перенесена налево - ТЗ п.4)
+            fig = Figure(figsize=(8, 3), layout="constrained")
             canvas = FigureCanvas(fig)
             ax = fig.add_subplot(111)
 
-            # Настраиваем оси
-            ax.yaxis.tick_right()
-            ax.yaxis.set_label_position("right")
-            ax.xaxis.set_visible(False)
+            # Шкала давления - слева (раньше была справа, см. ТЗ п.4)
+            ax.yaxis.tick_left()
+            ax.yaxis.set_label_position("left")
+
+            # Логарифмическая шкала с фиксированными делениями под диапазон
+            # конкретного датчика (ТЗ п.4)
+            ax.set_yscale("log")
+            ax.set_ylim(*spec["ylim"])
+            ax.yaxis.set_major_locator(FixedLocator(spec["yticks"]))
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _pos: _log_tick_label(v)))
+            ax.yaxis.set_minor_locator(NullLocator())
+
+            # Единицы измерения по вертикальной шкале - "Па", подписаны
+            # сверху над шкалой (ТЗ п.4)
+            ax.text(0.0, 1.06, "Па", transform=ax.transAxes,
+                    fontsize=9, fontweight="bold", va="bottom", ha="left")
+
+            # Горизонтальная шкала - время в секундах (ТЗ п.4)
+            ax.xaxis.set_visible(True)
+            ax.set_xlabel("t, с")
+
             ax.set_title(self.graph_name[i])
 
-            # Инициализируем линию графика
-            line, = ax.plot([], [], color='blue')
+            # Инициализируем линию графика нижней границей шкалы, а не 0 -
+            # на логарифмической шкале 0 не отображается
+            line, = ax.plot([], [], color="blue")
 
-            # Устанавливаем начальные границы
+            # Подпись текущего значения давления - совпадает со значением
+            # в нижней строке измерений (ТЗ п.4)
+            value_text = ax.text(
+                0.98, 0.94, "", transform=ax.transAxes, ha="right", va="top",
+                fontsize=11, fontweight="bold", color="blue",
+                bbox=dict(boxstyle="round", fc="white", ec="blue", alpha=0.85),
+            )
+
+            # Устанавливаем начальные границы по X
             ax.set_xlim(0, self.MAX_POINTS)
-            ax.set_ylim(0, 100)  # Фиксированный масштаб по Y
 
             # Добавляем в списки
             self.figures.append(fig)
             self.canvases.append(canvas)
             self.axes.append(ax)
             self.lines.append(line)
+            self.value_texts.append(value_text)
             self.event_markers.append([])
 
             # Добавляем график в макет
             self.layout.addWidget(canvas)
 
-            # Заполняем начальные данные
+            # Заполняем начальные данные нижней границей шкалы датчика
+            floor_value = spec["ylim"][0]
             for j in range(self.MAX_POINTS):
                 self.timestamps[i].append(j)
-                self.data[i].append(0)
+                self.data[i].append(floor_value)
 
             # Обновляем линию
             line.set_data(self.timestamps[i], self.data[i])
@@ -68,13 +134,22 @@ class GraphPanel(QWidget):
     def update_plots(self, actual_data):
         """Обновляет данные на всех трёх графиках."""
         for i in range(3):
-            # Добавляем новые данные
+            value = actual_data[i]
+            floor_value = self.axis_specs[i]["ylim"][0]
 
-            self.data[i].append(actual_data[i])
+            # На логарифмической шкале нулевые/отрицательные значения не
+            # отображаются - подставляем нижнюю границу диапазона датчика
+            plot_value = value if value and value > 0 else floor_value
+
+            self.data[i].append(plot_value)
             self.timestamps[i].append(self.timestamps[i][-1] + 1 if self.timestamps[i] else 0)
 
             # Обновляем линию
             self.lines[i].set_data(self.timestamps[i], self.data[i])
+
+            # Подпись текущего значения - тот же формат, что и в нижней
+            # строке измерений (ТЗ п.4/п.5)
+            self.value_texts[i].set_text(self.axis_specs[i]["fmt"](value))
 
             # Сдвигаем видимую область, если данные выходят за правую границу
             if self.timestamps[i][-1] > self.axes[i].get_xlim()[1]:
