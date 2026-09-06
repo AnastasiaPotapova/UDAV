@@ -265,8 +265,10 @@ class SchematicWidget(QGraphicsView):
         # Насосы
         self.items["NR"] = PumpSymbol("NR", 60, 220)
         self.items["NR"].add_to_scene(self.scene)
+        self.items["NR"].clicked.connect(self._on_valve_clicked)
         self.items["NI"] = PumpSymbol("NI", 140, 480)
         self.items["NI"].add_to_scene(self.scene)
+        self.items["NI"].clicked.connect(self._on_valve_clicked)
 
         # Клапаны
         for st, name, cx, cy, orient in [("l", "V3", 140, 440, 'v'), ("l", "V2", 60, 180, 'v'),
