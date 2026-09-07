@@ -52,9 +52,8 @@
           "size": 1,
           "type": "bitfield",
           "bits": {
-            "V8": 0,
-            "V4": 1,
-            "V5": 2
+            "V3": 0,
+            "V1": 1
           }
         },
         {
@@ -69,7 +68,7 @@
           "offset": 7,
           "size": 1,
           "type": "bitfield",
-          "bits": { "V3": 0, "V1": 1}
+          "bits": { "V8": 0, "V4": 1, "V5": 1}
         },
         {
           "name": "mida_pressure",
@@ -219,9 +218,9 @@
     "0x03": { "name": "TMN_CONTROL", "payload": "uint8", "units": ["NR"] },
     "0x04": { "name": "MIDA_UNITS", "payload": "uint8", "description": "0 — Па, 1 — Торр", "units": ["P2"] },
     "0x05": { "name": "MIDA_CALIBRATION", "payload": "bytes", "units": ["P2"]},
-    "0x06": { "name": "DU16_CONTROL", "payload": "uint8", "units": ["V1", "V3", "V6", "V7"] },
+    "0x06": { "name": "DU16_CONTROL", "payload": "uint8", "units": ["V3", "V1"] },
     "0x07": { "name": "DU63_CONTROL", "payload": "uint8", "units": ["V2"] },
-    "0x08": { "name": "ELECTRO_VALVE_CONTROL", "payload": "uint8", "units": ["V4", "V5", "V8"] },
+    "0x08": { "name": "ELECTRO_VALVE_CONTROL", "payload": "uint8", "units": ["V8", "V4", "V5"] },
     "0x09": { "name": "SET_PRESSURE", "payload": "float32" },
     "0x0A": { "name": "GET_ERRORS", "payload": "uint8" }
   }
