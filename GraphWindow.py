@@ -134,7 +134,7 @@ class GraphPanel(QWidget):
     def update_plots(self, actual_data):
         """Обновляет данные на всех трёх графиках."""
         for i in range(3):
-            value = actual_data[i]
+            value = actual_data[2 - i]
             floor_value = self.axis_specs[i]["ylim"][0]
 
             # На логарифмической шкале нулевые/отрицательные значения не
