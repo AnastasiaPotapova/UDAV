@@ -24,6 +24,16 @@ class Engine(QObject):
     DU16_VALVES = ["V3", "V1", "V6", "V7"]
     ELECTRO_VALVES = ["V8", "V4", "V5"]
 
+    # Перед уставкой давления (cmd 0x09, SET_PRESSURE) контроллеру нужно
+    # заранее сообщить, в какой объём идёт расширение — записывается 1 байт
+    # в EEPROM по адресу 0:
+    #   1 — расширение в большой объём (давление больше PRESSURE_EXPANSION_THRESHOLD_PA)
+    #   3 — расширение в малый объём (статическое расширение, малое давление)
+    EXPANSION_VOLUME_EEPROM_ADDRESS = 0
+    EXPANSION_VOLUME_LARGE = 1
+    EXPANSION_VOLUME_SMALL = 3
+    PRESSURE_EXPANSION_THRESHOLD_PA = 1000.0
+
     def __init__(self):
         super().__init__()
         self.protocol = ProtocolEngine(resource_path("protocol.json"))
@@ -151,8 +161,25 @@ class Engine(QObject):
         self._send_element_command(name, 1 if is_on else 0)
 
     def set_pressure(self, pressure_pa: float):
-        """Уставка давления через клапан VF (cmd 0x09, payload float32)."""
-        self.send_control("SET_PRESSURE", float(pressure_pa))
+        """Уставка давления через клапан VF (cmd 0x09, payload float32).
+
+        Перед самой уставкой контроллеру нужно сообщить, в какой объём
+        идёт расширение: сначала отправляется запись 1 байта в EEPROM по
+        адресу 0 (1 — большой объём при давлении больше
+        PRESSURE_EXPANSION_THRESHOLD_PA, 3 — малый объём/статическое
+        расширение при малом давлении), и только затем — сама команда
+        SET_PRESSURE.
+        """
+        pressure_pa = float(pressure_pa)
+
+        volume_mode = (
+            self.EXPANSION_VOLUME_LARGE
+            if pressure_pa > self.PRESSURE_EXPANSION_THRESHOLD_PA
+            else self.EXPANSION_VOLUME_SMALL
+        )
+        self.eeprom_write(self.EXPANSION_VOLUME_EEPROM_ADDRESS, bytes([volume_mode]))
+
+        self.send_control("SET_PRESSURE", pressure_pa)
 
     def set_system_enabled(self, enabled: bool):
         """Включение/выключение установки целиком (cmd 0x01, SYSTEM_ENABLE)."""
