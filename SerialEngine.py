@@ -10,8 +10,8 @@ class SerialEngine:
 
     def __init__(self, protocol_engine=None):
         self.port_name: Optional[str] = None
-        self.baudrate: int = 115200
-        self.timeout: float = 0.1
+        self.baudrate: int = 9600
+        self.timeout: float = 20
 
         self.ser: Optional[serial.Serial] = None
         self.send_queue = queue.Queue()
@@ -22,7 +22,7 @@ class SerialEngine:
         self._threads_started = False
 
     # --- настройки порта ---
-    def set_port_settings(self, port: str, baudrate: int = 115200, timeout: float = 0.1):
+    def set_port_settings(self, port: str, baudrate: int = 9600, timeout: float = 20):
         """Устанавливаем параметры порта перед открытием"""
         self.port_name = port
         self.baudrate = baudrate
