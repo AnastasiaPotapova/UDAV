@@ -272,14 +272,16 @@ class MainWindow(QMainWindow):
 
     def _update_values_bar(self, data: dict):
         """Обновляет нижнюю панель значений по данным обменного пакета."""
-        self.value_labels["P1"].setText(format_p1(data.get("mida_pressure")))
+        self.value_labels["P1"].setText(format_p3(data.get("thermal_pressure")))
         self.value_labels["P2"].setText(format_p2(data.get("magdischarge_pressure")))
-        self.value_labels["P3"].setText(format_p3(data.get("thermal_pressure")))
+        self.value_labels["P3"].setText(format_p1(data.get("mida_pressure")))
         self.value_labels["PSTAT"].setText(format_pstat(self.engine.static_pressure))
         self.value_labels["T1"].setText(format_temperature(data.get("temperature_channel_1")))
         self.value_labels["T2"].setText(format_temperature(data.get("temperature_channel_2")))
-        self.value_labels["T_MCU_INT"].setText(format_temperature(data.get("temperature_mcu_internal")))
-        self.value_labels["T_MCU_EXT"].setText(format_temperature(data.get("temperature_mcu_external")))
+        # T MCU внутр./внешн. контроллер отдаёт уже умноженными на 100 и 10
+        # соответственно - делим перед выводом (см. format_temperature)
+        self.value_labels["T_MCU_INT"].setText(format_temperature(data.get("temperature_mcu_internal"), scale=100))
+        self.value_labels["T_MCU_EXT"].setText(format_temperature(data.get("temperature_mcu_external"), scale=10))
 
     def ReadEeprom(self):
         self.w = EepromWindow(is_connected=lambda: self.connected)

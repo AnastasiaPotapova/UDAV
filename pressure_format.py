@@ -90,16 +90,21 @@ def format_pstat(value) -> str:
     return format_pressure(value, leading_digits=3, decimals=2, unit="Па")
 
 
-def format_temperature(value) -> str:
-    """Температура (протокол отдаёт её как обычное целое число °C, uint16,
-    без мантиссо-экспоненциальной нотации, в отличие от давлений) -
-    формат 'XX °C'."""
+def format_temperature(value, scale: float = 1.0) -> str:
+    """Температура в °C, всегда с одним знаком после запятой (запятая -
+    десятичный разделитель, как и у давлений в этом модуле).
+
+    scale - контроллер отдаёт T MCU (внутр./внешн.) уже умноженными на 100
+    и 10 соответственно, поэтому перед выводом их нужно поделить:
+    format_temperature(raw, scale=100) для внутр., scale=10 для внешн. Для
+    T1/T2 (процессные каналы) масштабирование не нужно, scale=1.0 по
+    умолчанию."""
     if value is None:
         return MISSING
     try:
-        value = float(value)
-    except (TypeError, ValueError):
+        value = float(value) / scale
+    except (TypeError, ValueError, ZeroDivisionError):
         return MISSING
     if math.isnan(value) or math.isinf(value):
         return MISSING
-    return f"{value:.0f} °C"
+    return f"{value:.1f} °C".replace(".", ",")
