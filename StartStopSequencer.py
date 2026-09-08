@@ -3,13 +3,23 @@
 описал Александр).
 
 Обе процедуры выполняются как последовательность шагов в строгом порядке:
-включение/выключение насосов и клапанов с задержкой 2 секунды между
-действиями, подтверждения оператора и ожидание показаний датчиков давления
-(P2 - МИДА-15/магниторазрядный, P3 - сенсор-магнетрон). Каждое действие на
-оборудование идёт через уже существующие Engine.set_device()/set_valve() -
-те же методы, что использует остальной интерфейс (схема, окно "Установка
-давления"), поэтому локальное состояние (Engine.system_status) и схема на
-экране остаются согласованными.
+включение/выключение насосов и клапанов, подтверждения оператора и ожидание
+показаний датчиков давления (P2 - МИДА-15/магниторазрядный, P3 -
+сенсор-магнетрон). Каждое действие на оборудование идёт через уже
+существующие Engine.set_device()/set_valve() - те же методы, что использует
+остальной интерфейс (схема, окно "Установка давления"), поэтому локальное
+состояние (Engine.system_status) и схема на экране остаются согласованными.
+
+Переход к следующему клапану/насосу в процедуре ждёт РЕАЛЬНОГО подтверждения
+срабатывания от контроллера (по полям du16/du63/electro_valves/
+forvacuum_state/tmn_state в опросе exchange_packet, см. _device_confirmed
+ниже), а не фиксированную задержку по таймеру: например, V3 включается
+только после того, как в очередном опросе контроллер подтвердит, что V1
+уже открыт. Это устраняет и саму причину гонки при групповых
+командах (см. Engine.commanded_status), и даёт более честную защиту от
+реального отказа оборудования - если клапан физически не сработал,
+процедура так и останется на этом шаге (с доступной кнопкой "Отмена"),
+а не продолжит слепо через 2 секунды.
 
 Основные классы:
     SequenceDialog     - модальное окно с "дорожкой загрузки" (список шагов
@@ -52,10 +62,60 @@ def _read_sensor(engine, sensor: str):
 
 
 # ---------------------------------------------------------------------------
+# Подтверждение срабатывания клапана/насоса по данным опроса контроллера
+# ---------------------------------------------------------------------------
+def _device_confirmed(engine, target: str, on: bool):
+    """True/False - контроллер в последнем опросе (Engine.last_data)
+    подтвердил (или ещё нет) фактическое состояние target.
+    None - для этого target нет способа подтвердить состояние по телеметрии
+    (нет ни одного опроса ещё, или протокол не даёт такого поля) - в этом
+    случае вызывающий код не блокирует процедуру, а идёт дальше сразу же."""
+    data = engine.last_data
+    if not data:
+        return False  # опроса ещё не было ни разу - ждём первый пакет
+
+    if target == "NI":
+        value = data.get("forvacuum_state")
+        if value is None:
+            return None
+        return bool(value) == on
+
+    if target == "NR":
+        # tmn_state: 0-OFF, 1-ACCELERATION, 2-NOMINAL - "включен" это
+        # любое не-OFF состояние
+        value = data.get("tmn_state")
+        if value is None:
+            return None
+        return (value != 0) == on
+
+    if target in ("V1", "V3", "V6", "V7"):
+        du16 = data.get("du16")
+        if not du16 or target not in du16:
+            return None
+        return bool(du16[target]) == on
+
+    if target == "V2":
+        value = data.get("du63")
+        if value is None:
+            return None
+        return bool(value) == on
+
+    if target in ("V4", "V5", "V8"):
+        electro = data.get("electro_valves")
+        if not electro or target not in electro:
+            return None
+        return bool(electro[target]) == on
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Описание шагов процедур "Запуск" / "Остановка"
 # ---------------------------------------------------------------------------
 # kind == "cmd"     -> включить/выключить насос (device=True) или клапан
-#                      (device=False), затем подождать delay_ms (мс)
+#                      (device=False); если "confirm": True - следующий шаг
+#                      начнётся только когда контроллер подтвердит реальное
+#                      срабатывание (см. _device_confirmed), а не сразу
 # kind == "confirm" -> показать text и ждать клика "Подтвердить" (либо
 #                      "Отмена" - тогда процедура прерывается и дальше
 #                      никакие команды не отправляются)
@@ -70,13 +130,13 @@ def build_start_steps():
          "label": "Подтверждение оператора: насос включился",
          "text": "Подтвердите, что насос включился"},
 
-        {"kind": "cmd", "target": "V1", "device": False, "on": True, "delay_ms": 2000,
+        {"kind": "cmd", "target": "V1", "device": False, "on": True, "confirm": True,
          "label": "Открытие клапана V1"},
-        {"kind": "cmd", "target": "V3", "device": False, "on": True, "delay_ms": 2000,
+        {"kind": "cmd", "target": "V3", "device": False, "on": True, "confirm": True,
          "label": "Открытие клапана V3"},
-        {"kind": "cmd", "target": "V2", "device": False, "on": True, "delay_ms": 2000,
+        {"kind": "cmd", "target": "V2", "device": False, "on": True, "confirm": True,
          "label": "Открытие клапана V2"},
-        {"kind": "cmd", "target": "V4", "device": False, "on": True, "delay_ms": 2000,
+        {"kind": "cmd", "target": "V4", "device": False, "on": True, "confirm": True,
          "label": "Открытие клапана V4"},
         {"kind": "cmd", "target": "V8", "device": False, "on": True,
          "label": "Открытие клапана V8"},
@@ -110,11 +170,11 @@ def build_start_steps():
 
 def build_stop_steps():
     return [
-        {"kind": "cmd", "target": "V8", "device": False, "on": False, "delay_ms": 2000,
+        {"kind": "cmd", "target": "V8", "device": False, "on": False, "confirm": True,
          "label": "Закрытие клапана V8"},
-        {"kind": "cmd", "target": "V4", "device": False, "on": False, "delay_ms": 2000,
+        {"kind": "cmd", "target": "V4", "device": False, "on": False, "confirm": True,
          "label": "Закрытие клапана V4"},
-        {"kind": "cmd", "target": "V2", "device": False, "on": False, "delay_ms": 2000,
+        {"kind": "cmd", "target": "V2", "device": False, "on": False, "confirm": True,
          "label": "Закрытие клапана V2"},
         {"kind": "cmd", "target": "NR", "device": True, "on": False,
          "label": "Выключение турбомолекулярного насоса (NR)"},
@@ -122,9 +182,9 @@ def build_stop_steps():
          "label": "Подтверждение оператора: насос выключился",
          "text": "Подтвердите, что насос (NR) выключился"},
 
-        {"kind": "cmd", "target": "V3", "device": False, "on": False, "delay_ms": 2000,
+        {"kind": "cmd", "target": "V3", "device": False, "on": False, "confirm": True,
          "label": "Закрытие клапана V3"},
-        {"kind": "cmd", "target": "V1", "device": False, "on": False, "delay_ms": 2000,
+        {"kind": "cmd", "target": "V1", "device": False, "on": False, "confirm": True,
          "label": "Закрытие клапана V1"},
         {"kind": "cmd", "target": "NI", "device": True, "on": False,
          "label": "Выключение форвакуумного насоса (NI)"},
@@ -306,9 +366,8 @@ class SequenceRunner(QObject):
         if kind == "cmd":
             self.dialog.show_confirm_button(False)
             self._exec_cmd(step)
-            delay = step.get("delay_ms", 0)
-            if delay:
-                QTimer.singleShot(delay, self._advance)
+            if step.get("confirm"):
+                self._start_confirm_wait(step)
             else:
                 self._advance()
         elif kind == "confirm":
@@ -339,14 +398,39 @@ class SequenceRunner(QObject):
             return
         self._poll_timer.start()
 
+    def _start_confirm_wait(self, step):
+        """Ждём реального подтверждения от контроллера (см.
+        _device_confirmed), а не таймер - только после этого переходим к
+        следующему клапану/насосу в процедуре."""
+        confirmed = _device_confirmed(self.engine, step["target"], step["on"])
+        if confirmed or confirmed is None:
+            if confirmed is None:
+                logging.warning(
+                    'Процедура "%s": для %s нет поля подтверждения в опросе '
+                    "контроллера - шаг пропущен без ожидания срабатывания",
+                    self.dialog.windowTitle(), step["target"],
+                )
+            self._advance()
+            return
+        self.dialog.set_status(
+            (step.get("text") or step["label"]) + " — ожидание подтверждения от контроллера…"
+        )
+        self._poll_timer.start()
+
     def _check_wait_condition(self):
         if self._stopped:
             self._poll_timer.stop()
             return
         step = self.steps[self.index]
-        if self._condition_met(step):
-            self._poll_timer.stop()
-            self._advance()
+        if step["kind"] == "wait":
+            if self._condition_met(step):
+                self._poll_timer.stop()
+                self._advance()
+        elif step["kind"] == "cmd" and step.get("confirm"):
+            confirmed = _device_confirmed(self.engine, step["target"], step["on"])
+            if confirmed or confirmed is None:
+                self._poll_timer.stop()
+                self._advance()
 
     def _condition_met(self, step) -> bool:
         value = _read_sensor(self.engine, step["sensor"])
