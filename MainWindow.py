@@ -17,7 +17,7 @@ from ProtocolEditorWindow import ProtocolEditorWindow
 from EepromWindow import EepromWindow
 from ConfigWindow import ConfigWindow
 from SoftwareInfoWindow import SoftwareInfoWindow
-from pressure_format import format_p1, format_p2, format_p3, format_pstat
+from pressure_format import format_p1, format_p2, format_p3, format_pstat, format_temperature
 
 
 # ------------------------------------------------------------------------------------------------
@@ -215,7 +215,11 @@ class MainWindow(QMainWindow):
         info_menu.addAction("Условные обозначения").triggered.connect(self.open_legend)
 
     def _build_values_bar(self):
-        """Строка с текущими значениями Р1, Р2, Р3, Р стат. внизу экрана (ТЗ п.3)."""
+        """Строка с текущими значениями Р1, Р2, Р3, Р стат. и температур
+        внизу экрана (ТЗ п.3). Температурные каналы (T1/T2 - процессные
+        датчики, T MCU - диагностика платы контроллера) есть в обменном
+        пакете (protocol.json, temperature_channels_1_2/temperature_mcu_analog),
+        но раньше нигде не выводились - добавлены сюда же, рядом с давлениями."""
         bar_layout = QHBoxLayout()
 
         self.value_labels = {}
@@ -224,6 +228,10 @@ class MainWindow(QMainWindow):
             ("P2", "Р2"),
             ("P3", "Р3"),
             ("PSTAT", "Р стат."),
+            ("T1", "T1"),
+            ("T2", "T2"),
+            ("T_MCU_INT", "T MCU (внутр.)"),
+            ("T_MCU_EXT", "T MCU (внешн.)"),
         ]
         for key, caption in specs:
             box = QFrame()
@@ -249,6 +257,10 @@ class MainWindow(QMainWindow):
         self.value_labels["P2"].setText(format_p2(data.get("magdischarge_pressure")))
         self.value_labels["P3"].setText(format_p3(data.get("thermal_pressure")))
         self.value_labels["PSTAT"].setText(format_pstat(self.engine.static_pressure))
+        self.value_labels["T1"].setText(format_temperature(data.get("temperature_channel_1")))
+        self.value_labels["T2"].setText(format_temperature(data.get("temperature_channel_2")))
+        self.value_labels["T_MCU_INT"].setText(format_temperature(data.get("temperature_mcu_internal")))
+        self.value_labels["T_MCU_EXT"].setText(format_temperature(data.get("temperature_mcu_external")))
 
     def ReadEeprom(self):
         self.w = EepromWindow(is_connected=lambda: self.connected)

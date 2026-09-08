@@ -52,8 +52,8 @@
           "size": 1,
           "type": "bitfield",
           "bits": {
-            "V3": 1,
-            "V1": 0
+            "V3": 0,
+            "V1": 1
           }
         },
         {
@@ -68,7 +68,7 @@
           "offset": 7,
           "size": 1,
           "type": "bitfield",
-          "bits": { "V8": 2, "V4": 0, "V5": 1}
+          "bits": { "V8": 0, "V4": 1, "V5": 2}
         },
         {
           "name": "mida_pressure",
