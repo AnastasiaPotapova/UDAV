@@ -88,3 +88,18 @@ def format_p3(value) -> str:
 def format_pstat(value) -> str:
     """Р стат. - давление после статического расширения, формат '100,00E-2 Па'."""
     return format_pressure(value, leading_digits=3, decimals=2, unit="Па")
+
+
+def format_temperature(value) -> str:
+    """Температура (протокол отдаёт её как обычное целое число °C, uint16,
+    без мантиссо-экспоненциальной нотации, в отличие от давлений) -
+    формат 'XX °C'."""
+    if value is None:
+        return MISSING
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return MISSING
+    if math.isnan(value) or math.isinf(value):
+        return MISSING
+    return f"{value:.0f} °C"
