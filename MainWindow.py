@@ -18,6 +18,7 @@ from EepromWindow import EepromWindow
 from ConfigWindow import ConfigWindow
 from SoftwareInfoWindow import SoftwareInfoWindow
 from pressure_format import format_p1, format_p2, format_p3, format_pstat, format_temperature
+from StartStopSequencer import StartStopController
 
 
 # ------------------------------------------------------------------------------------------------
@@ -97,6 +98,9 @@ class MainWindow(QMainWindow):
 
         self.init_ui()
 
+        # --- логика кнопок "Запуск"/"Остановка" (см. StartStopSequencer.py) ---
+        self.start_stop_controller = StartStopController(self, self.engine)
+
         # --- подписка на события от движка ---
         self.engine.packet_received.connect(self.display_data)
 
@@ -122,9 +126,10 @@ class MainWindow(QMainWindow):
         # сценариев, который раньше собирался автоматически из modes.txt
         # (ModesManager/ModesExecutor), этим же пунктом убран.
         #
-        # Логику самих процедур "Запуск"/"Остановка" опишет Александр
-        # отдельно, поэтому пока это заглушки без всплывающих окон - ТЗ
-        # прямо просит здесь никаких доп. окон не показывать.
+        # Логика самих процедур "Запуск"/"Остановка" (пошаговое включение
+        # клапанов/насосов с задержками, подтверждения оператора и ожидание
+        # показаний P2/P3) реализована в StartStopController - см.
+        # StartStopSequencer.py и self.start_stop_controller ниже.
         commands_panel = QWidget()
         commands_layout = QVBoxLayout(commands_panel)
 
@@ -215,24 +220,38 @@ class MainWindow(QMainWindow):
         info_menu.addAction("Условные обозначения").triggered.connect(self.open_legend)
 
     def _build_values_bar(self):
-        """Строка с текущими значениями Р1, Р2, Р3, Р стат. и температур
-        внизу экрана (ТЗ п.3). Температурные каналы (T1/T2 - процессные
-        датчики, T MCU - диагностика платы контроллера) есть в обменном
-        пакете (protocol.json, temperature_channels_1_2/temperature_mcu_analog),
-        но раньше нигде не выводились - добавлены сюда же, рядом с давлениями."""
-        bar_layout = QHBoxLayout()
+        """Две строки текущих значений внизу экрана (ТЗ п.3): давления
+        (Р1, Р2, Р3, Р стат.) в одну линию, температуры (T1/T2 - процессные
+        датчики, T MCU - диагностика платы контроллера, см. protocol.json,
+        temperature_channels_1_2/temperature_mcu_analog) отдельной строкой
+        под ней."""
+        outer_layout = QVBoxLayout()
 
         self.value_labels = {}
-        specs = [
+
+        pressure_specs = [
             ("P1", "Р1"),
             ("P2", "Р2"),
             ("P3", "Р3"),
             ("PSTAT", "Р стат."),
+        ]
+        temperature_specs = [
             ("T1", "T1"),
             ("T2", "T2"),
             ("T_MCU_INT", "T MCU (внутр.)"),
             ("T_MCU_EXT", "T MCU (внешн.)"),
         ]
+
+        outer_layout.addLayout(self._build_value_row(pressure_specs))
+        outer_layout.addLayout(self._build_value_row(temperature_specs))
+
+        return outer_layout
+
+    def _build_value_row(self, specs):
+        """Одна строка из подписанных полей значений (см. _build_values_bar).
+        Заполняет self.value_labels ключами из specs."""
+        row_layout = QHBoxLayout()
+
         for key, caption in specs:
             box = QFrame()
             box.setFrameShape(QFrame.StyledPanel)
@@ -247,9 +266,9 @@ class MainWindow(QMainWindow):
             box_layout.addWidget(value)
 
             self.value_labels[key] = value
-            bar_layout.addWidget(box)
+            row_layout.addWidget(box)
 
-        return bar_layout
+        return row_layout
 
     def _update_values_bar(self, data: dict):
         """Обновляет нижнюю панель значений по данным обменного пакета."""
@@ -283,14 +302,14 @@ class MainWindow(QMainWindow):
 
     # ---------- команды левой панели (ТЗ_к_ПО_2.docx, п.1 и п.2) ----------
     def _on_start_clicked(self):
-        """Заглушка кнопки "Запуск" - логику опишет Александр отдельно
-        (ТЗ_к_ПО_2.docx, п.1). Без всплывающих окон."""
-        logging.info('Кнопка "Запуск": процедура ещё не определена (см. ТЗ п.1)')
+        """Кнопка "Запуск" - запускает процедуру пуска установки
+        (StartStopController, см. StartStopSequencer.py)."""
+        self.start_stop_controller.on_start_clicked()
 
     def _on_stop_clicked(self):
-        """Заглушка кнопки "Остановка" - логику опишет Александр отдельно
-        (ТЗ_к_ПО_2.docx, п.1). Без всплывающих окон."""
-        logging.info('Кнопка "Остановка": процедура ещё не определена (см. ТЗ п.1)')
+        """Кнопка "Остановка" - запускает процедуру останова установки
+        (StartStopController, см. StartStopSequencer.py)."""
+        self.start_stop_controller.on_stop_clicked()
 
     def open_pressure_window(self):
         """Окно "Установка давления" (ТЗ_к_ПО_2.docx, п.2)."""
