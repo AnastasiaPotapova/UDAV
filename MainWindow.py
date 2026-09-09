@@ -276,8 +276,9 @@ class MainWindow(QMainWindow):
         self.value_labels["P2"].setText(format_p2(data.get("magdischarge_pressure")))
         self.value_labels["P3"].setText(format_p3(data.get("thermal_pressure")))
         self.value_labels["PSTAT"].setText(format_pstat(self.engine.static_pressure))
-        self.value_labels["T1"].setText(format_temperature(data.get("temperature_channel_1")))
-        self.value_labels["T2"].setText(format_temperature(data.get("temperature_channel_2")))
+        # T1/T2 (процессные каналы) контроллер тоже отдаёт умноженными на 10
+        self.value_labels["T1"].setText(format_temperature(data.get("temperature_channel_1"), scale=10))
+        self.value_labels["T2"].setText(format_temperature(data.get("temperature_channel_2"), scale=10))
         # T MCU внутр./внешн. контроллер отдаёт уже умноженными на 100 и 10
         # соответственно - делим перед выводом (см. format_temperature)
         self.value_labels["T_MCU_INT"].setText(format_temperature(data.get("temperature_mcu_internal"), scale=100))
@@ -393,10 +394,18 @@ class MainWindow(QMainWindow):
 
         if packet_name == "exchange_packet":
             # обновляем графики
+            # ВНИМАНИЕ: по прямому указанию пользователя (проверено на
+            # реальной установке) на графиках Р1 и Р3 нужно поменять
+            # местами источники данных относительно того, что подписано на
+            # осях - график "МИДА-ДА-15 (Р1)" показывает thermal_pressure,
+            # график "СЕНСОР-МАГНЕТРОН (Р3)" - mida_pressure. Это НЕ
+            # совпадает с нижней панелью значений (_update_values_bar),
+            # где P1/P3 подтверждены корректными в исходном порядке -
+            # см. claude/start-stop-sequence.md в проекте.
             self.graph_panel.update_plots([
-                data.get("mida_pressure"),
+                data.get("thermal_pressure"),
                 data.get("magdischarge_pressure"),
-                data.get("thermal_pressure")
+                data.get("mida_pressure")
             ])
             # обновляем схему
             self.update_schematic(data)

@@ -239,7 +239,11 @@ class ProtocolEngine:
         header = int(desc["header"], 16)
         cmd_id = int(desc["cmd_id"], 16)
 
-        length = len(data)
+        # LENGTH - кол-во байт ПОСЛЕ этого поля: 2 байта адреса + N байт
+        # данных (уточнено пользователем; было ошибочно len(data) без
+        # учёта поля адреса, из-за чего LENGTH получался на 2 меньше
+        # реального размера остатка пакета)
+        length = 2 + len(data)
 
         return (
             bytes([header, cmd_id, length]) +

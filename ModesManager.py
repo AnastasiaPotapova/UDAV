@@ -7,10 +7,12 @@ import os
 
 from resource_path import resource_path
 
+# см. пояснение про P1/P3 в StartStopSequencer.SENSOR_FIELDS - этот модуль
+# сейчас не подключён (см. MainWindow.py), но держим маппинг актуальным
 SENSOR_FIELD_MAP = {
-    "P1": "mida_pressure",
+    "P1": "thermal_pressure",
     "P2": "magdischarge_pressure",
-    "P3": "thermal_pressure",
+    "P3": "mida_pressure",
 }
 
 # Клапаны, которые реально существуют в протоколе как отдельные управляемые элементы.
