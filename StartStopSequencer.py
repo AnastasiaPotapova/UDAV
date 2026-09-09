@@ -177,6 +177,15 @@ def build_start_steps():
 
 def build_stop_steps():
     return [
+        # Проверка V5 перед остальными шагами (по прямому запросу
+        # пользователя): если V5 уже включён, Engine._send_element_command
+        # не отправит повторную команду (см. "уже в этом состоянии") и шаг
+        # с confirm=True пройдёт мгновенно по уже имеющейся телеметрии;
+        # если V5 выключен - команда на включение отправляется и шаг ждёт
+        # реального подтверждения от контроллера, как и остальные клапаны.
+        {"kind": "cmd", "target": "V5", "device": False, "on": True, "confirm": True,
+         "label": "Проверка клапана V5 (включение, если выключен)"},
+
         {"kind": "cmd", "target": "V8", "device": False, "on": False, "confirm": True,
          "label": "Закрытие клапана V8"},
         {"kind": "cmd", "target": "V4", "device": False, "on": False, "confirm": True,
