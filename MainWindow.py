@@ -341,6 +341,11 @@ class MainWindow(QMainWindow):
                 "background-color: #e74c3c; color: white; font-weight: bold;"
             )
 
+    def closeEvent(self, event):
+        # корректно закрываем файл измерений, если запись ещё идёт
+        self.start_stop_controller.recorder.stop()
+        super().closeEvent(event)
+
     # ---------- команды на клапаны ----------
 
     def _on_valve_click(self, name, _=None):

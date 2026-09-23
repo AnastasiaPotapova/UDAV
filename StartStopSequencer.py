@@ -33,6 +33,7 @@ forvacuum_state/tmn_state в опросе exchange_packet, см. _device_confirm
 import logging
 
 from PyQt5.QtCore import QObject, QTimer, Qt, pyqtSignal
+from MeasurementRecorder import MeasurementRecorder
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
     QProgressBar, QPushButton,
@@ -512,6 +513,9 @@ class StartStopController(QObject):
         self.engine = engine
         self._runner = None
         self._dialog = None
+        # запись измерений в папку "Измерения": начинается после успешного
+        # "Запуска", останавливается перед "Остановкой" (MeasurementRecorder.py)
+        self.recorder = MeasurementRecorder(engine, self)
 
         self._set_start_state("idle")
         self._set_stop_state("idle")
@@ -563,6 +567,7 @@ class StartStopController(QObject):
         if ok:
             self._set_start_state("ready")
             self._set_stop_state("idle")  # установка запущена - "Остановка" доступна
+            self.recorder.start()
         else:
             self._set_start_state("idle")
             self._set_stop_state("idle")
@@ -571,6 +576,9 @@ class StartStopController(QObject):
     def on_stop_clicked(self):
         if self._runner is not None:
             return  # процедура уже выполняется
+
+        # запись измерений прекращается ДО начала процедуры остановки
+        self.recorder.stop()
 
         self._set_start_state("running")  # нельзя параллельно жать "Запуск"
         self._set_stop_state("running")

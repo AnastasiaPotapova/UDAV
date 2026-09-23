@@ -142,16 +142,17 @@ class Engine(QObject):
 
         Перед самой уставкой контроллеру нужно сообщить, в какой объём
         идёт расширение: сначала отправляется запись 1 байта в EEPROM по
-        адресу 0 (1 — большой объём при давлении больше
+        адресу 0 (1 — большой объём при давлении больше ИЛИ РАВНОМ
         PRESSURE_EXPANSION_THRESHOLD_PA, 3 — малый объём/статическое
-        расширение при малом давлении), и только затем — сама команда
-        SET_PRESSURE.
+        расширение при давлении меньше порога), и только затем — сама
+        команда SET_PRESSURE. Граница включительная (>=) по прямому
+        указанию пользователя: ровно 1000 Па -> большой объём (01).
         """
         pressure_pa = float(pressure_pa)
 
         volume_mode = (
             self.EXPANSION_VOLUME_LARGE
-            if pressure_pa > self.PRESSURE_EXPANSION_THRESHOLD_PA
+            if pressure_pa >= self.PRESSURE_EXPANSION_THRESHOLD_PA
             else self.EXPANSION_VOLUME_SMALL
         )
         self.eeprom_write(self.EXPANSION_VOLUME_EEPROM_ADDRESS, bytes([volume_mode]))
