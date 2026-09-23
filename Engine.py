@@ -6,6 +6,7 @@ from ProtocolEngine import ProtocolEngine
 from SerialEngine import SerialEngine
 from logger_setup import app_logger, controller_logger
 from resource_path import resource_path
+from ExpansionCoefficients import load_coefficients
 
 # Engine
 
@@ -39,6 +40,10 @@ class Engine(QObject):
         self.system_enabled = False
 
         self.static_pressure = None
+
+        # Коэффициенты статического расширения (k, q0) - 4 строки, загружаются
+        # из файла при запуске (см. ExpansionCoefficients.py)
+        self.expansion_coefficients = load_coefficients()
 
         self.CONTROL_MAP = {
             # Насосы
@@ -137,7 +142,7 @@ class Engine(QObject):
         """Явно установить состояние насоса/устройства (ON/OFF)."""
         self._send_element_command(name, 1 if is_on else 0)
 
-    def set_pressure(self, pressure_pa: float):
+    def set_pressure(self, pressure_pa: float, volume_mode: int = None):
         """Уставка давления через клапан VF (cmd 0x09, payload float32).
 
         Перед самой уставкой контроллеру нужно сообщить, в какой объём
@@ -147,14 +152,19 @@ class Engine(QObject):
         расширение при давлении меньше порога), и только затем — сама
         команда SET_PRESSURE. Граница включительная (>=) по прямому
         указанию пользователя: ровно 1000 Па -> большой объём (01).
+
+        volume_mode - явно заданный режим объёма (EXPANSION_VOLUME_LARGE/
+        EXPANSION_VOLUME_SMALL) вместо выбора по порогу; используется
+        процедурой "Статическое расширение" (установка Pисх в малом объёме).
         """
         pressure_pa = float(pressure_pa)
 
-        volume_mode = (
-            self.EXPANSION_VOLUME_LARGE
-            if pressure_pa >= self.PRESSURE_EXPANSION_THRESHOLD_PA
-            else self.EXPANSION_VOLUME_SMALL
-        )
+        if volume_mode is None:
+            volume_mode = (
+                self.EXPANSION_VOLUME_LARGE
+                if pressure_pa >= self.PRESSURE_EXPANSION_THRESHOLD_PA
+                else self.EXPANSION_VOLUME_SMALL
+            )
         self.eeprom_write(self.EXPANSION_VOLUME_EEPROM_ADDRESS, bytes([volume_mode]))
 
         self.send_control("SET_PRESSURE", pressure_pa)
@@ -242,6 +252,10 @@ class Engine(QObject):
     def set_operator_info(self, operator: str, installation: str):
         self.operator = operator
         self.installation = installation
+
+    def set_expansion_coefficients(self, coefficients: list):
+        """Новые табличные коэффициенты (после "Сохранить" в окне таблицы)."""
+        self.expansion_coefficients = [dict(row) for row in coefficients]
 
     def set_static_pressure(self, value: float):
         """Сохранить расчётное значение Р стат."""

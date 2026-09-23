@@ -19,6 +19,8 @@ from ConfigWindow import ConfigWindow
 from SoftwareInfoWindow import SoftwareInfoWindow
 from pressure_format import format_p1, format_p2, format_p3, format_pstat, format_temperature
 from StartStopSequencer import StartStopController
+from ExpansionCoefficients import ExpansionCoefficientsWindow
+from StaticExpansion import StaticExpansionSetupWindow, StaticExpansionRunner
 
 
 # ------------------------------------------------------------------------------------------------
@@ -141,6 +143,11 @@ class MainWindow(QMainWindow):
         self.set_pressure_btn.clicked.connect(self.open_pressure_window)
         commands_layout.addWidget(self.set_pressure_btn)
 
+        self.static_expansion_btn = QPushButton("Статическое расширение")
+        self.static_expansion_btn.clicked.connect(self.open_static_expansion)
+        commands_layout.addWidget(self.static_expansion_btn)
+        self.static_expansion_runner = None
+
         self.stop_btn = QPushButton("Остановка")
         self.stop_btn.clicked.connect(self._on_stop_clicked)
         commands_layout.addWidget(self.stop_btn)
@@ -208,6 +215,9 @@ class MainWindow(QMainWindow):
         settings_menu.addAction("Добавить оператора").triggered.connect(self.open_operator_window)
         settings_menu.addAction("Редактировать конфигурацию").triggered.connect(self.ReadConfig)
         settings_menu.addAction("Редактировать протокол").triggered.connect(self.open_protocol_editor)
+
+        coeff_menu = menubar.addMenu("Коэффициенты статического расширения")
+        coeff_menu.addAction("Открыть таблицу").triggered.connect(self.open_expansion_coefficients)
 
         eeprom_menu = menubar.addMenu("ЭСППЗУ")
         eeprom_menu.addAction("Открыть настройки").triggered.connect(self.ReadEeprom)
@@ -325,6 +335,36 @@ class MainWindow(QMainWindow):
         расширения - без дополнительного окна-подтверждения (ТЗ п.2)."""
         self.engine.set_pressure(value)
 
+    # ---------- статическое расширение ----------
+    def open_expansion_coefficients(self):
+        """Меню "Коэффициенты статического расширения": таблица (№, k, q0)."""
+        self.coefficients_window = ExpansionCoefficientsWindow(self.engine.expansion_coefficients)
+        self.coefficients_window.coefficients_saved.connect(self.engine.set_expansion_coefficients)
+        self.coefficients_window.show()
+
+    def open_static_expansion(self):
+        """Кнопка "Статическое расширение": ввод давления и выбор коэффициентов,
+        затем окно выполнения процедуры (см. StaticExpansion.py)."""
+        if self.static_expansion_runner is not None:
+            self.static_expansion_runner.dialog.raise_()
+            self.static_expansion_runner.dialog.activateWindow()
+            return
+        self.static_expansion_setup = StaticExpansionSetupWindow(self.engine.expansion_coefficients)
+        self.static_expansion_setup.start_requested.connect(self._start_static_expansion)
+        self.static_expansion_setup.show()
+
+    def _start_static_expansion(self, params: dict):
+        self.static_expansion_runner = StaticExpansionRunner(self.engine, params, self)
+        self.static_expansion_runner.finished.connect(self._on_static_expansion_finished)
+        self.static_expansion_btn.setStyleSheet("background-color: #f1c40f; font-weight: bold;")
+        self.set_pressure_btn.setEnabled(False)
+        self.static_expansion_runner.start()
+
+    def _on_static_expansion_finished(self):
+        self.static_expansion_runner = None
+        self.static_expansion_btn.setStyleSheet("")
+        self.set_pressure_btn.setEnabled(True)
+
     def _on_power_clicked(self):
         self.engine.toggle_system_enabled()
         self._update_power_button()
@@ -344,6 +384,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         # корректно закрываем файл измерений, если запись ещё идёт
         self.start_stop_controller.recorder.stop()
+        if self.static_expansion_runner is not None:
+            self.static_expansion_runner.stop()
         super().closeEvent(event)
 
     # ---------- команды на клапаны ----------
