@@ -55,7 +55,7 @@ PRESSURE_COLUMNS = [
 
 # (заголовок, поле, делитель масштаба контроллера) - как в нижней панели.
 TEMPERATURE_COLUMNS = [
-    ("T1, °C", "temperature_channel_1", 10),
+    ("T1, °C", "temperature_channel_1", 100),
     ("T2, °C", "temperature_channel_2", 10),
     ("T MCU внутр., °C", "temperature_mcu_internal", 100),
     ("T MCU внешн., °C", "temperature_mcu_external", 10),

@@ -20,7 +20,8 @@
      9. Установка Pисх в малом объёме (контроль по P2)
     10. Ожидание 1 мин
     11. Ожидание P3 < 1E-2 Па, p0 = P3
-    12. p1 = текущее P2
+    12. p1 = текущее P2; Pисх в формуле = это же ФАКТИЧЕСКОЕ P2
+        (а не рассчитанное в п.6 - то нужно только как уставка в п.9)
     13. Закрыть V2
     14. V4 - см. выше
     15. Pстат = k*Pисх*(1 + (p0/p1)*((1/k) - 1)) + q*T
@@ -31,7 +32,7 @@
     18. Открыть V2
     19-20. Ожидание P3 < 1E-2 Па, p0 = P3
     21. Закрыть V2
-    22. Pисх = последнее Pстат
+    22. Pисх = фактическое текущее P2 (а не рассчитанное Pстат)
     23. V4 - см. выше
     24. Расчёт Pстат (как в п.15)
     25. Повтор расчёта каждые 3 с до "Стоп"
@@ -376,7 +377,8 @@ class StaticExpansionRunner(QObject):
         self.q = params["q"]
         self.edited = params.get("edited", False)
 
-        self.p_init = None     # Pисх
+        self.p_init = None     # Pисх в формуле - ФАКТИЧЕСКОЕ давление (P2)
+        self.p_setpoint = None # рассчитанное Pисх - только уставка (шаг 9)
         self.p0 = None         # P3 перед расширением
         self.p1 = None         # P2 перед расширением
         self.p_stat = None     # последнее рассчитанное Pстат
@@ -398,7 +400,7 @@ class StaticExpansionRunner(QObject):
             ("Установка исходного давления в малом объёме (P2)", self._s_set_pressure),
             ("Ожидание 1 минуты", lambda: self._s_delay(SETTLE_DELAY_S)),
             ("Проверка P3 < 1E-2 Па, запись p0", self._s_wait_p0),
-            ("Запись текущего P2 (p1)", self._s_record_p1),
+            ("Запись текущего P2 (p1 = фактическое Pисх)", self._s_record_p1),
             ("Закрытие клапана V2", lambda: self._s_valve("V2", False)),
             (v4_text, lambda: self._s_valve("V4", v4_open)),
             ("Расчёт давления после расширения", self._s_calc_stat),
@@ -413,7 +415,7 @@ class StaticExpansionRunner(QObject):
                 ("Открытие клапана V2", lambda: self._s_valve("V2", True)),
                 ("Ожидание P3 < 1E-2 Па, запись p0", self._s_wait_p0),
                 ("Закрытие клапана V2", lambda: self._s_valve("V2", False)),
-                ("Pисх = последнее Pстат", self._s_take_stat_as_initial),
+                ("Запись фактического Pисх (текущее P2)", self._s_take_actual_initial),
                 (v4_text, lambda: self._s_valve("V4", v4_open)),
                 ("Расчёт давления после расширения", self._s_calc_stat),
                 (final_loop_label, lambda: self._s_loop(final=True)),
@@ -522,13 +524,13 @@ class StaticExpansionRunner(QObject):
     # ------------------------------------------------------------ шаги
     def _s_calc_initial(self):
         if self.n == 1:
-            self.p_init = self.p_target / self.k
-            text = (f"Pисх = Pвв / k = {format_number(self.p_target)} / "
-                    f"{format_number(self.k)} = {format_number(self.p_init)} Па")
+            self.p_setpoint = self.p_target / self.k
+            text = (f"Pисх (уставка) = Pвв / k = {format_number(self.p_target)} / "
+                    f"{format_number(self.k)} = {format_number(self.p_setpoint)} Па")
         else:
-            self.p_init = self.p_target / self.k ** 2
-            text = (f"Pисх = Pвв / k² = {format_number(self.p_target)} / "
-                    f"{format_number(self.k)}² = {format_number(self.p_init)} Па")
+            self.p_setpoint = self.p_target / self.k ** 2
+            text = (f"Pисх (уставка) = Pвв / k² = {format_number(self.p_target)} / "
+                    f"{format_number(self.k)}² = {format_number(self.p_setpoint)} Па")
         self.dialog.add_log(text)
         self._advance()
 
@@ -554,9 +556,9 @@ class StaticExpansionRunner(QObject):
 
     def _s_set_pressure(self):
         # "в малом объёме" - принудительно режим малого объёма в EEPROM,
-        # независимо от порога 1000 Па в Engine.set_pressure
-        self.engine.set_pressure(self.p_init, volume_mode=self.engine.EXPANSION_VOLUME_SMALL)
-        target = self.p_init
+        # (обычная установка давления идёт в большой объём)
+        self.engine.set_pressure(self.p_setpoint, volume_mode=self.engine.EXPANSION_VOLUME_SMALL)
+        target = self.p_setpoint
         self.dialog.add_log(f"Уставка давления {format_number(target)} Па (малый объём)")
         self.dialog.set_status(
             f"Установка Pисх = {format_number(target)} Па, контроль по P2 "
@@ -607,15 +609,25 @@ class StaticExpansionRunner(QObject):
             if p2 is None:
                 return False
             self.p1 = p2
+            # в формулу идёт фактически установившееся давление, а не
+            # рассчитанная уставка
+            self.p_init = p2
             self.dialog.add_log(f"p1 = P2 = {format_number(p2)} Па")
+            self.dialog.add_log(f"Pисх (фактическое) = P2 = {format_number(p2)} Па")
             return True
 
         self._wait_until(check)
 
-    def _s_take_stat_as_initial(self):
-        self.p_init = self.p_stat
-        self.dialog.add_log(f"Pисх = Pстат = {format_number(self.p_init)} Па")
-        self._advance()
+    def _s_take_actual_initial(self):
+        def check():
+            p2 = _read_sensor(self.engine, "P2")
+            if p2 is None:
+                return False
+            self.p_init = p2
+            self.dialog.add_log(f"Pисх (фактическое) = P2 = {format_number(p2)} Па")
+            return True
+
+        self._wait_until(check)
 
     def _s_calc_stat(self):
         self._calculate(log=True)

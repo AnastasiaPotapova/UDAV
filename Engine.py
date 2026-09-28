@@ -19,7 +19,6 @@ class Engine(QObject):
     EXPANSION_VOLUME_EEPROM_ADDRESS = 0
     EXPANSION_VOLUME_LARGE = 1
     EXPANSION_VOLUME_SMALL = 3
-    PRESSURE_EXPANSION_THRESHOLD_PA = 1000.0
 
     def __init__(self):
         super().__init__()
@@ -147,11 +146,10 @@ class Engine(QObject):
 
         Перед самой уставкой контроллеру нужно сообщить, в какой объём
         идёт расширение: сначала отправляется запись 1 байта в EEPROM по
-        адресу 0 (1 — большой объём при давлении больше ИЛИ РАВНОМ
-        PRESSURE_EXPANSION_THRESHOLD_PA, 3 — малый объём/статическое
-        расширение при давлении меньше порога), и только затем — сама
-        команда SET_PRESSURE. Граница включительная (>=) по прямому
-        указанию пользователя: ровно 1000 Па -> большой объём (01).
+        адресу 0 (1 — большой объём, 3 — малый объём), и только затем —
+        сама команда SET_PRESSURE. Обычная установка давления (кнопка
+        "Установка давления") ВСЕГДА идёт в большой объём (01) при любом
+        значении - порог 1000 Па убран по указанию пользователя.
 
         volume_mode - явно заданный режим объёма (EXPANSION_VOLUME_LARGE/
         EXPANSION_VOLUME_SMALL) вместо выбора по порогу; используется
@@ -160,11 +158,7 @@ class Engine(QObject):
         pressure_pa = float(pressure_pa)
 
         if volume_mode is None:
-            volume_mode = (
-                self.EXPANSION_VOLUME_LARGE
-                if pressure_pa >= self.PRESSURE_EXPANSION_THRESHOLD_PA
-                else self.EXPANSION_VOLUME_SMALL
-            )
+            volume_mode = self.EXPANSION_VOLUME_LARGE
         self.eeprom_write(self.EXPANSION_VOLUME_EEPROM_ADDRESS, bytes([volume_mode]))
 
         self.send_control("SET_PRESSURE", pressure_pa)

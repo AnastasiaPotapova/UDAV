@@ -287,7 +287,7 @@ class MainWindow(QMainWindow):
         self.value_labels["P3"].setText(format_p3(data.get("thermal_pressure")))
         self.value_labels["PSTAT"].setText(format_pstat(self.engine.static_pressure))
         # T1/T2 (процессные каналы) контроллер тоже отдаёт умноженными на 10
-        self.value_labels["T1"].setText(format_temperature(data.get("temperature_channel_1"), scale=10))
+        self.value_labels["T1"].setText(format_temperature(data.get("temperature_channel_1"), scale=100))
         self.value_labels["T2"].setText(format_temperature(data.get("temperature_channel_2"), scale=10))
         # T MCU внутр./внешн. контроллер отдаёт уже умноженными на 100 и 10
         # соответственно - делим перед выводом (см. format_temperature)
