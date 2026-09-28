@@ -45,6 +45,10 @@ from PyQt5.QtWidgets import (
 PRESSURE_V8_THRESHOLD_PA = 500.0        # ждём после открытия V8, перед NR
 PRESSURE_TURBINE_THRESHOLD_PA = 150.0   # "турбина разогналась"
 PRESSURE_MAGNETRON_THRESHOLD_PA = 1e-2  # готовность по показаниям магнетрона (P3)
+# "Замена датчиков": P2 считается дошедшим до атмосферы, когда показывает
+# не меньше этого значения (атмосфера ~101 325 Па; порог с запасом на
+# погрешность датчика у верхней границы диапазона)
+PRESSURE_ATMOSPHERE_THRESHOLD_PA = 9.0e4
 
 # Датчики хранятся в Engine.last_data под этими именами полей.
 # ВНИМАНИЕ: P1/P3 здесь намеренно НЕ совпадают с MainWindow._update_values_bar -
@@ -129,6 +133,12 @@ def _device_confirmed(engine, target: str, on: bool):
 #                      никакие команды не отправляются)
 # kind == "wait"    -> ждать выполнения условия sensor op threshold
 # kind == "message" -> просто показать text и сразу перейти к следующему шагу
+#
+# Необязательные ключи шага:
+#   "button"      - текст кнопки подтверждения (по умолчанию "Подтвердить")
+#   "hide_cancel" - скрыть "Отмена" на этом шаге
+# Если ПОСЛЕДНИЙ шаг процедуры - "confirm", окно закрывается сразу по клику
+# оператора (без автоматической паузы перед закрытием).
 
 def build_start_steps():
     return [
@@ -211,6 +221,56 @@ def build_stop_steps():
     ]
 
 
+def build_sensor_replace_steps():
+    """Процедура "Замена датчиков" (по описанию пользователя, 28.09)."""
+    return [
+        {"kind": "cmd", "target": "V5", "device": False, "on": False, "confirm": True,
+         "label": "Закрытие клапана V5"},
+        {"kind": "cmd", "target": "V2", "device": False, "on": False, "confirm": True,
+         "label": "Закрытие клапана V2"},
+        {"kind": "cmd", "target": "V4", "device": False, "on": True, "confirm": True,
+         "label": "Открытие клапана V4"},
+        {"kind": "cmd", "target": "V8", "device": False, "on": True, "confirm": True,
+         "label": "Открытие клапана V8"},
+        {"kind": "wait", "sensor": "P2", "op": ">=", "threshold": PRESSURE_ATMOSPHERE_THRESHOLD_PA,
+         "label": "Ожидание атмосферного давления по P2",
+         "text": f"Ожидание атмосферного давления (P2 ≥ {PRESSURE_ATMOSPHERE_THRESHOLD_PA:g} Па)…"},
+        {"kind": "confirm",
+         "label": "Замена датчиков оператором",
+         "text": "Установка готова к смене датчиков.\n"
+                 "Замените датчики и нажмите «Смена прошла успешно».",
+         "button": "Смена прошла успешно"},
+
+        {"kind": "cmd", "target": "V3", "device": False, "on": False, "confirm": True,
+         "label": "Закрытие клапана V3"},
+        {"kind": "cmd", "target": "V5", "device": False, "on": True, "confirm": True,
+         "label": "Открытие клапана V5"},
+        {"kind": "wait", "sensor": "P2", "op": "<", "threshold": PRESSURE_V8_THRESHOLD_PA,
+         "label": f"Ожидание давления (P2 < {PRESSURE_V8_THRESHOLD_PA:g} Па)"},
+        {"kind": "confirm",
+         "label": "Подтверждение оператора: давление достигнуто",
+         "text": f"P2 < {PRESSURE_V8_THRESHOLD_PA:g} Па. Подтвердите."},
+        {"kind": "cmd", "target": "V5", "device": False, "on": False, "confirm": True,
+         "label": "Закрытие клапана V5"},
+        {"kind": "cmd", "target": "V3", "device": False, "on": True, "confirm": True,
+         "label": "Открытие клапана V3"},
+        {"kind": "cmd", "target": "V2", "device": False, "on": True, "confirm": True,
+         "label": "Открытие клапана V2"},
+
+        {"kind": "confirm",
+         "label": "Включение магниторазрядного вакуумметра",
+         "text": "Включите магниторазрядный вакуумметр и нажмите «Готово».",
+         "button": "Готово"},
+        {"kind": "wait", "sensor": "P3", "op": "<", "threshold": PRESSURE_MAGNETRON_THRESHOLD_PA,
+         "label": f"Ожидание P3 < {PRESSURE_MAGNETRON_THRESHOLD_PA:g} Па"},
+        {"kind": "confirm",
+         "label": "Готово",
+         "text": "Замена датчиков завершена. Установка готова.",
+         "button": "Закрыть",
+         "hide_cancel": True},
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Диалог с "дорожкой загрузки"
 # ---------------------------------------------------------------------------
@@ -286,7 +346,9 @@ class SequenceDialog(QDialog):
         for row, label in enumerate(self._labels):
             self.list_widget.item(row).setText("✓ " + label)
 
-    def show_confirm_button(self, show: bool):
+    def show_confirm_button(self, show: bool, text: str = "Подтвердить"):
+        if show:
+            self.confirm_btn.setText(text)
         self.confirm_btn.setVisible(show)
 
     def show_cancel_button(self, show: bool):
@@ -378,6 +440,7 @@ class SequenceRunner(QObject):
         step = self.steps[self.index]
         self.dialog.set_progress(self.index)
         self.dialog.set_status(step.get("text") or step["label"])
+        self.dialog.show_cancel_button(not step.get("hide_cancel"))
 
         kind = step["kind"]
         if kind == "cmd":
@@ -388,7 +451,7 @@ class SequenceRunner(QObject):
             else:
                 self._advance()
         elif kind == "confirm":
-            self.dialog.show_confirm_button(True)
+            self.dialog.show_confirm_button(True, step.get("button", "Подтвердить"))
             # дальше ждём клика "Подтвердить"/"Отмена" - см. _on_confirm/_on_cancel
         elif kind == "message":
             self.dialog.show_confirm_button(False)
@@ -478,6 +541,11 @@ class SequenceRunner(QObject):
         self.dialog.show_confirm_button(False)
         self.dialog.show_cancel_button(False)
         logging.info('Процедура "%s" завершена успешно', self.dialog.windowTitle())
+        if self.steps[-1]["kind"] == "confirm":
+            # оператор уже нажал кнопку на последнем шаге ("Закрыть") -
+            # закрываем сразу, без паузы
+            self._close_and_finish()
+            return
         QTimer.singleShot(self.READY_MESSAGE_HOLD_MS, self._close_and_finish)
 
     def _close_and_finish(self):
@@ -604,3 +672,38 @@ class StartStopController(QObject):
     def _reset_after_stop(self):
         self._set_start_state("idle")
         self._set_stop_state("idle")
+
+    # ------------------------------------------------------------ "Замена датчиков"
+    def on_sensor_replace_clicked(self):
+        if self._runner is not None:
+            return  # процедура уже выполняется
+
+        # "Запуск"/"Остановка" на время процедуры недоступны; их прежнее
+        # состояние (например, зелёный "Запуск" у запущенной установки)
+        # восстанавливается после завершения
+        self._saved_buttons = [
+            (btn, btn.isEnabled(), btn.styleSheet())
+            for btn in (self.main_window.start_btn, self.main_window.stop_btn)
+        ]
+        for btn in (self.main_window.start_btn, self.main_window.stop_btn):
+            btn.setEnabled(False)
+        sensor_btn = self.main_window.sensor_replace_btn
+        sensor_btn.setEnabled(False)
+        sensor_btn.setStyleSheet(self._YELLOW)
+
+        steps = build_sensor_replace_steps()
+        self._dialog = SequenceDialog("Замена датчиков", steps, self.main_window)
+        self._runner = SequenceRunner(self.engine, self._dialog, steps, self)
+        self._runner.finished.connect(self._on_sensor_replace_finished)
+        self._dialog.show()
+        self._runner.start()
+
+    def _on_sensor_replace_finished(self, ok: bool):
+        self._runner = None
+        self._dialog = None
+        for btn, enabled, style in self._saved_buttons:
+            btn.setEnabled(enabled)
+            btn.setStyleSheet(style)
+        sensor_btn = self.main_window.sensor_replace_btn
+        sensor_btn.setEnabled(True)
+        sensor_btn.setStyleSheet("")

@@ -152,6 +152,10 @@ class MainWindow(QMainWindow):
         self.stop_btn.clicked.connect(self._on_stop_clicked)
         commands_layout.addWidget(self.stop_btn)
 
+        self.sensor_replace_btn = QPushButton("Замена датчиков")
+        self.sensor_replace_btn.clicked.connect(self._on_sensor_replace_clicked)
+        commands_layout.addWidget(self.sensor_replace_btn)
+
         commands_layout.addStretch()
 
         scroll = QScrollArea()
@@ -323,6 +327,11 @@ class MainWindow(QMainWindow):
         """Кнопка "Остановка" - запускает процедуру останова установки
         (StartStopController, см. StartStopSequencer.py)."""
         self.start_stop_controller.on_stop_clicked()
+
+    def _on_sensor_replace_clicked(self):
+        """Кнопка "Замена датчиков" (StartStopController, см.
+        StartStopSequencer.build_sensor_replace_steps)."""
+        self.start_stop_controller.on_sensor_replace_clicked()
 
     def open_pressure_window(self):
         """Окно "Установка давления" (ТЗ_к_ПО_2.docx, п.2)."""
