@@ -2,7 +2,10 @@
 Процедура "Статическое расширение" (кнопка в левой панели MainWindow).
 
 1. Оператор вводит задаваемое давление Pвв (как в "Установке давления").
-2. n = 1, если Pвв >= 10 Па, иначе n = 2.
+2. Число расширений n по Pвв (см. expansions_count):
+       Pвв < 0,3 Па          - n = 3
+       0,3 <= Pвв <= 19 Па   - n = 2
+       Pвв > 19 Па           - n = 1
 3. Выбор ОДНОГО варианта коэффициентов а)/б)/в)/г) (строки таблицы
    "Коэффициенты статического расширения", по умолчанию выбран а).
 4. Показываются редактируемые поля k и q. Если оператор меняет значение -
@@ -14,7 +17,7 @@
     шаг 14 (и 23 при n=2): а, б - открыть V4; в, г - закрыть V4
 
 Шаги (n = 1):
-     6. Pисх = Pвв / k                 (n = 2: Pисх = Pвв / k^2)
+     6. Pисх = Pвв / k                 (n = 2: Pвв / k^2, n = 3: Pвв / k^3)
      7. Закрыть V4                     (отсюда отсчитывается T)
      8. V8 - см. выше
      9. Установка Pисх в малом объёме (контроль по P2)
@@ -27,15 +30,17 @@
     15. Pстат = k*Pисх*(1 + (p0/p1)*((1/k) - 1)) + q*T
     16. Повтор расчёта каждые 3 с до "Стоп" (n = 1)
         или до "Перейти к следующему шагу" (n = 2)
-Дальше только для n = 2:
+Для каждого следующего расширения (n = 2: одно, n = 3: два повтора):
     17. Закрыть V4                     (T отсчитывается заново)
     18. Открыть V2
     19-20. Ожидание P3 < 1E-2 Па, p0 = P3
     21. Закрыть V2
-    22. Pисх = фактическое текущее P2 (а не рассчитанное Pстат)
+    22. Pисх = Pстат, рассчитанное по результатам ПРЕДЫДУЩЕГО расширения
+        (а не P2). Только в первом расширении Pисх = фактическое P2.
     23. V4 - см. выше
     24. Расчёт Pстат (как в п.15)
-    25. Повтор расчёта каждые 3 с до "Стоп"
+    25. Повтор расчёта каждые 3 с до "Стоп" (последнее расширение) или до
+        "Перейти к следующему шагу" (промежуточное)
 
 "Стоп" в любой момент закрывает окно и прекращает процедуру - дальнейшие
 команды на оборудование не отправляются, клапаны остаются в том состоянии,
@@ -55,11 +60,12 @@ from PyQt5.QtWidgets import (
 )
 
 from ExpansionCoefficients import VARIANT_LETTERS, format_number, parse_number
-from PressureWindow import MIN_PRESSURE_PA, MAX_PRESSURE_PA, parse_pressure
+from PressureWindow import MIN_PRESSURE_PA, MAX_PRESSURE_PA, parse_pressure, format_range_value
 from StartStopSequencer import _device_confirmed, _read_sensor
 
-# Граница выбора числа расширений: Pвв >= 10 Па -> n=1, строго меньше -> n=2
-N_THRESHOLD_PA = 10.0
+# Границы выбора числа расширений
+N3_THRESHOLD_PA = 0.3    # Pвв < 0,3 Па          -> n = 3
+N1_THRESHOLD_PA = 19.0   # Pвв > 19 Па           -> n = 1; между - n = 2
 # Требование к остаточному давлению в большом объёме (P3) перед расширением
 P0_THRESHOLD_PA = 1e-2
 # Пауза после установки исходного давления
@@ -70,6 +76,16 @@ RECALC_INTERVAL_MS = 3000
 # Pисх не больше чем на эту долю (оператор может перейти дальше вручную)
 PRESSURE_TOLERANCE = 0.05
 POLL_INTERVAL_MS = 300
+
+
+def expansions_count(p_target: float) -> int:
+    """Число расширений: < 0,3 Па - 3; 0,3 ... 19 Па включительно - 2;
+    > 19 Па - 1."""
+    if p_target < N3_THRESHOLD_PA:
+        return 3
+    if p_target <= N1_THRESHOLD_PA:
+        return 2
+    return 1
 
 
 def variant_flags(variant: int):
@@ -123,7 +139,7 @@ class StaticExpansionSetupWindow(QWidget):
         form.addRow("Задать Р:", row)
         layout.addLayout(form)
 
-        hint = QLabel(f"Диапазон: от {MIN_PRESSURE_PA:g} до {MAX_PRESSURE_PA:g} Па")
+        hint = QLabel(f"Диапазон: от {format_range_value(MIN_PRESSURE_PA)} до {format_range_value(MAX_PRESSURE_PA)} Па")
         hint.setStyleSheet("color: gray;")
         layout.addWidget(hint)
 
@@ -149,15 +165,14 @@ class StaticExpansionSetupWindow(QWidget):
             return
         if not (MIN_PRESSURE_PA <= value <= MAX_PRESSURE_PA):
             self.pressure_error.setText(
-                f"Значение должно быть в диапазоне от {MIN_PRESSURE_PA:g} до {MAX_PRESSURE_PA:g} Па"
+                f"Значение должно быть в диапазоне от {format_range_value(MIN_PRESSURE_PA)} до {format_range_value(MAX_PRESSURE_PA)} Па"
             )
             return
         self.pressure_error.setText("")
         self.p_target = value
-        self.n = 1 if value >= N_THRESHOLD_PA else 2
-        cond = f"≥ {N_THRESHOLD_PA:g}" if self.n == 1 else f"< {N_THRESHOLD_PA:g}"
+        self.n = expansions_count(value)
         self.summary_label.setText(
-            f"Задано P = {format_number(value)} Па ({cond} Па) → n = {self.n}"
+            f"Задано P = {format_number(value)} Па → расширений: n = {self.n}"
         )
         self.pages.setCurrentIndex(1)
 
@@ -255,11 +270,11 @@ class StaticExpansionSetupWindow(QWidget):
         self._start(k, q, edited=True)
 
     def _start(self, k, q, edited):
-        p_init = self.p_target / (k if self.n == 1 else k ** 2)
+        p_init = self.p_target / k ** self.n
         if not (MIN_PRESSURE_PA <= p_init <= MAX_PRESSURE_PA):
             self.coeff_error.setText(
                 f"Исходное давление {format_number(p_init)} Па вне диапазона "
-                f"{MIN_PRESSURE_PA:g}…{MAX_PRESSURE_PA:g} Па"
+                f"{format_range_value(MIN_PRESSURE_PA)}…{format_range_value(MAX_PRESSURE_PA)} Па"
             )
             return
         self.start_requested.emit({
@@ -405,21 +420,25 @@ class StaticExpansionRunner(QObject):
             (v4_text, lambda: self._s_valve("V4", v4_open)),
             ("Расчёт давления после расширения", self._s_calc_stat),
         ]
-        if self.n == 1:
-            self.steps.append((final_loop_label, lambda: self._s_loop(final=True)))
-        else:
+        # каждое следующее расширение (n = 2: одно, n = 3: два) - тот же
+        # набор шагов; Pисх в нём = Pстат предыдущего расширения
+        for repeat in range(2, self.n + 1):
             self.steps += [
                 ("Расчёт каждые 3 с (до «Перейти к следующему шагу»)",
                  lambda: self._s_loop(final=False)),
-                ("Закрытие клапана V4", lambda: self._s_valve("V4", False, start_t=True)),
-                ("Открытие клапана V2", lambda: self._s_valve("V2", True)),
-                ("Ожидание P3 < 1E-2 Па, запись p0", self._s_wait_p0),
-                ("Закрытие клапана V2", lambda: self._s_valve("V2", False)),
-                ("Запись фактического Pисх (текущее P2)", self._s_take_actual_initial),
-                (v4_text, lambda: self._s_valve("V4", v4_open)),
-                ("Расчёт давления после расширения", self._s_calc_stat),
-                (final_loop_label, lambda: self._s_loop(final=True)),
+                (f"[Расширение {repeat}] Закрытие клапана V4",
+                 lambda: self._s_valve("V4", False, start_t=True)),
+                (f"[Расширение {repeat}] Открытие клапана V2",
+                 lambda: self._s_valve("V2", True)),
+                (f"[Расширение {repeat}] Ожидание P3 < 1E-2 Па, запись p0", self._s_wait_p0),
+                (f"[Расширение {repeat}] Закрытие клапана V2",
+                 lambda: self._s_valve("V2", False)),
+                (f"[Расширение {repeat}] Pисх = Pстат предыдущего расширения",
+                 self._s_take_previous_stat),
+                (f"[Расширение {repeat}] {v4_text}", lambda: self._s_valve("V4", v4_open)),
+                (f"[Расширение {repeat}] Расчёт давления после расширения", self._s_calc_stat),
             ]
+        self.steps.append((final_loop_label, lambda: self._s_loop(final=True)))
 
         letter = VARIANT_LETTERS[self.variant]
         self.dialog = StaticExpansionDialog(
@@ -523,14 +542,10 @@ class StaticExpansionRunner(QObject):
 
     # ------------------------------------------------------------ шаги
     def _s_calc_initial(self):
-        if self.n == 1:
-            self.p_setpoint = self.p_target / self.k
-            text = (f"Pисх (уставка) = Pвв / k = {format_number(self.p_target)} / "
-                    f"{format_number(self.k)} = {format_number(self.p_setpoint)} Па")
-        else:
-            self.p_setpoint = self.p_target / self.k ** 2
-            text = (f"Pисх (уставка) = Pвв / k² = {format_number(self.p_target)} / "
-                    f"{format_number(self.k)}² = {format_number(self.p_setpoint)} Па")
+        power = "" if self.n == 1 else "²" if self.n == 2 else "³"
+        self.p_setpoint = self.p_target / self.k ** self.n
+        text = (f"Pисх (уставка) = Pвв / k{power} = {format_number(self.p_target)} / "
+                f"{format_number(self.k)}{power} = {format_number(self.p_setpoint)} Па")
         self.dialog.add_log(text)
         self._advance()
 
@@ -618,16 +633,17 @@ class StaticExpansionRunner(QObject):
 
         self._wait_until(check)
 
-    def _s_take_actual_initial(self):
-        def check():
-            p2 = _read_sensor(self.engine, "P2")
-            if p2 is None:
-                return False
-            self.p_init = p2
-            self.dialog.add_log(f"Pисх (фактическое) = P2 = {format_number(p2)} Па")
-            return True
-
-        self._wait_until(check)
+    def _s_take_previous_stat(self):
+        """Pисх следующего расширения = Pстат, рассчитанное по результатам
+        предыдущего (а не P2)."""
+        if self.p_stat is None:
+            self.dialog.add_log("Нет рассчитанного Pстат предыдущего расширения - Pисх не изменён")
+        else:
+            self.p_init = self.p_stat
+            self.dialog.add_log(
+                f"Pисх = Pстат предыдущего расширения = {format_number(self.p_init)} Па"
+            )
+        self._advance()
 
     def _s_calc_stat(self):
         self._calculate(log=True)

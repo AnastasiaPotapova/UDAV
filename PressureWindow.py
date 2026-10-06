@@ -6,10 +6,16 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QPushButton, QLabel,
 )
 
-# ТЗ_к_ПО_2.docx, п.2: диапазон значений давления, которые можно задать
-# через это окно - от 1Е-1 (0,1 Па) до 10Е5 (1 000 000 Па).
+# Диапазон значений давления, которые можно задать через это окно (и в
+# "Статическом расширении") - от 0,1 Па до 1·10^5 Па (по правке пользователя;
+# раньше верхняя граница была 10Е5 = 1 000 000 Па).
 MIN_PRESSURE_PA = 1e-1
-MAX_PRESSURE_PA = 10 * 10 ** 5
+MAX_PRESSURE_PA = 1e5
+
+
+def format_range_value(value: float) -> str:
+    """Для подсказок диапазона: 0,1 / 100000 (запятая, без '1e+05')."""
+    return f"{value:.10g}".replace(".", ",")
 
 _NUMBER_RE = re.compile(r"[+-]?\d+(\.\d+)?([eE][+-]?\d+)?")
 
@@ -77,7 +83,7 @@ class PressureSetWindow(QWidget):
         form_layout.addRow("Задать Р:", input_row)
         layout.addLayout(form_layout)
 
-        hint = QLabel(f"Диапазон: от {MIN_PRESSURE_PA:g} до {MAX_PRESSURE_PA:g} Па")
+        hint = QLabel(f"Диапазон: от {format_range_value(MIN_PRESSURE_PA)} до {format_range_value(MAX_PRESSURE_PA)} Па")
         hint.setStyleSheet("color: gray;")
         layout.addWidget(hint)
 
@@ -104,7 +110,7 @@ class PressureSetWindow(QWidget):
             return
         if not (MIN_PRESSURE_PA <= value <= MAX_PRESSURE_PA):
             self.error_label.setText(
-                f"Значение должно быть в диапазоне от {MIN_PRESSURE_PA:g} до {MAX_PRESSURE_PA:g} Па"
+                f"Значение должно быть в диапазоне от {format_range_value(MIN_PRESSURE_PA)} до {format_range_value(MAX_PRESSURE_PA)} Па"
             )
             return
 

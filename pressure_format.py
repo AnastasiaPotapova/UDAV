@@ -2,10 +2,8 @@
 Форматирование измеренных значений давления в нотацию вида "100,00E-2",
 принятую в ТЗ (см. Протокол/ТЗ_К_ПО.docx, п.3):
 
-    Р1, Р3, Р стат. — мантисса из 3 целых цифр и обязательно 2 знака
-                       после запятой:   "100,00E-2"
-    Р2              — мантисса из 4 целых цифр, без дробной части:
-                       "1000E-1"
+    Все давления (Р1, Р2, Р3, Р стат.) — мантисса из 1 целой цифры и
+    3 знаков после запятой:   "1,234E-2"
 
 Число всегда представляется как mantissa * 10**exp, где количество
 целых разрядов мантиссы фиксировано (leading_digits), а запятая -
@@ -70,24 +68,36 @@ def format_pressure(value, leading_digits: int = 3, decimals: int = 2, unit: str
     return result
 
 
+# Единый формат всех давлений (нижняя панель и подписи на графиках):
+# одна цифра до запятой, три после и степень десяти: '1,234E-2 Па'.
+# (Раньше было '100,00E-2' у Р1/Р3/Р стат. и '1000E-1' у Р2.)
+PRESSURE_LEADING_DIGITS = 1
+PRESSURE_DECIMALS = 3
+
+
+def _format_unified(value) -> str:
+    return format_pressure(value, leading_digits=PRESSURE_LEADING_DIGITS,
+                           decimals=PRESSURE_DECIMALS, unit="Па")
+
+
 def format_p1(value) -> str:
-    """Р1 - датчик МИДА-ДА-15, формат '100,00E-2 Па'."""
-    return format_pressure(value, leading_digits=3, decimals=2, unit="Па")
+    """Р1 - датчик МИДА-ДА-15, формат '1,234E-2 Па'."""
+    return _format_unified(value)
 
 
 def format_p2(value) -> str:
-    """Р2 - датчик МИДА-15, формат '1000E-1 Па'."""
-    return format_pressure(value, leading_digits=4, decimals=0, unit="Па")
+    """Р2 - датчик МИДА-15, формат '1,234E-2 Па'."""
+    return _format_unified(value)
 
 
 def format_p3(value) -> str:
-    """Р3 - СЕНСОР-МАГНЕТРОН, формат '100,00E-2 Па'."""
-    return format_pressure(value, leading_digits=3, decimals=2, unit="Па")
+    """Р3 - СЕНСОР-МАГНЕТРОН, формат '1,234E-2 Па'."""
+    return _format_unified(value)
 
 
 def format_pstat(value) -> str:
-    """Р стат. - давление после статического расширения, формат '100,00E-2 Па'."""
-    return format_pressure(value, leading_digits=3, decimals=2, unit="Па")
+    """Р стат. - давление после статического расширения, формат '1,234E-2 Па'."""
+    return _format_unified(value)
 
 
 def format_temperature(value, scale: float = 1.0) -> str:

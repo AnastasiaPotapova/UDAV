@@ -251,9 +251,7 @@ class MainWindow(QMainWindow):
         ]
         temperature_specs = [
             ("T1", "T1"),
-            ("T2", "T2"),
             ("T_MCU_INT", "T MCU (внутр.)"),
-            ("T_MCU_EXT", "T MCU (внешн.)"),
         ]
 
         outer_layout.addLayout(self._build_value_row(pressure_specs))
@@ -290,13 +288,10 @@ class MainWindow(QMainWindow):
         self.value_labels["P2"].setText(format_p2(data.get("magdischarge_pressure")))
         self.value_labels["P3"].setText(format_p3(data.get("thermal_pressure")))
         self.value_labels["PSTAT"].setText(format_pstat(self.engine.static_pressure))
-        # T1/T2 (процессные каналы) контроллер тоже отдаёт умноженными на 10
+        # T2 и T MCU внешн. с экрана убраны (они по-прежнему пишутся в CSV)
         self.value_labels["T1"].setText(format_temperature(data.get("temperature_channel_1"), scale=100))
-        self.value_labels["T2"].setText(format_temperature(data.get("temperature_channel_2"), scale=10))
-        # T MCU внутр./внешн. контроллер отдаёт уже умноженными на 100 и 10
-        # соответственно - делим перед выводом (см. format_temperature)
+        # T MCU внутр. контроллер отдаёт умноженной на 100 - делим перед выводом
         self.value_labels["T_MCU_INT"].setText(format_temperature(data.get("temperature_mcu_internal"), scale=100))
-        self.value_labels["T_MCU_EXT"].setText(format_temperature(data.get("temperature_mcu_external"), scale=10))
 
     def ReadEeprom(self):
         self.w = EepromWindow(is_connected=lambda: self.connected)
