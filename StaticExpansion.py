@@ -108,6 +108,11 @@ class StaticExpansionSetupWindow(QWidget):
     """start_requested(dict): p_target, n, variant (0..3), k, q, edited."""
 
     start_requested = pyqtSignal(dict)
+    closed = pyqtSignal()  # окно закрыто (в т.ч. после запуска) - см. MetrologyVerification
+
+    def closeEvent(self, event):
+        self.closed.emit()
+        super().closeEvent(event)
 
     def __init__(self, coefficients: list):
         super().__init__()

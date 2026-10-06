@@ -64,6 +64,11 @@ class PressureSetWindow(QWidget):
     индикатора в этом окне ТЗ не требует.
     """
     pressure_confirmed = pyqtSignal(float)
+    closed = pyqtSignal()  # окно закрыто (в т.ч. после "Ок") - см. MetrologyVerification
+
+    def closeEvent(self, event):
+        self.closed.emit()
+        super().closeEvent(event)
 
     def __init__(self):
         super().__init__()

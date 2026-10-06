@@ -21,6 +21,7 @@ from pressure_format import format_p1, format_p2, format_p3, format_pstat, forma
 from StartStopSequencer import StartStopController
 from ExpansionCoefficients import ExpansionCoefficientsWindow
 from StaticExpansion import StaticExpansionSetupWindow, StaticExpansionRunner
+from MetrologyVerification import MetrologyController
 
 
 # ------------------------------------------------------------------------------------------------
@@ -155,6 +156,11 @@ class MainWindow(QMainWindow):
         self.sensor_replace_btn = QPushButton("Замена датчиков")
         self.sensor_replace_btn.clicked.connect(self._on_sensor_replace_clicked)
         commands_layout.addWidget(self.sensor_replace_btn)
+
+        self.metrology_btn = QPushButton("Метрологическая оценка")
+        self.metrology_btn.clicked.connect(self._on_metrology_clicked)
+        commands_layout.addWidget(self.metrology_btn)
+        self.metrology_controller = None
 
         commands_layout.addStretch()
 
@@ -369,6 +375,26 @@ class MainWindow(QMainWindow):
         self.static_expansion_btn.setStyleSheet("")
         self.set_pressure_btn.setEnabled(True)
 
+    # ---------- метрологическая оценка ----------
+    def _on_metrology_clicked(self):
+        """Кнопка "Метрологическая оценка" (см. MetrologyVerification.py)."""
+        if self.metrology_controller is not None:
+            return
+        self.metrology_controller = MetrologyController(self.engine, self)
+        self.metrology_controller.finished.connect(self._on_metrology_finished)
+        # на время поверки ручные кнопки установки давления недоступны -
+        # давление задаёт сама процедура
+        self.metrology_btn.setStyleSheet("background-color: #f1c40f; font-weight: bold;")
+        self.set_pressure_btn.setEnabled(False)
+        self.static_expansion_btn.setEnabled(False)
+        self.metrology_controller.start()
+
+    def _on_metrology_finished(self):
+        self.metrology_controller = None
+        self.metrology_btn.setStyleSheet("")
+        self.set_pressure_btn.setEnabled(True)
+        self.static_expansion_btn.setEnabled(True)
+
     def _on_power_clicked(self):
         self.engine.toggle_system_enabled()
         self._update_power_button()
@@ -390,6 +416,8 @@ class MainWindow(QMainWindow):
         self.start_stop_controller.recorder.stop()
         if self.static_expansion_runner is not None:
             self.static_expansion_runner.stop()
+        if self.metrology_controller is not None:
+            self.metrology_controller.abort()
         super().closeEvent(event)
 
     # ---------- команды на клапаны ----------
