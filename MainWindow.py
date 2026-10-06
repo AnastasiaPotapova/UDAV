@@ -43,11 +43,13 @@ class ConnectSettingsWindow(QWidget):
 
         layout.addWidget(QLabel("Скорость:"))
         self.baud_combo = QComboBox()
-        self.baud_combo.addItems(["115200", "57600", "38400", "19200", "9600"])
+        self.baud_combo.addItems(["9600"])
+        self.baud_combo.setEnabled(False)  # скорость фиксированная
         layout.addWidget(self.baud_combo)
 
         layout.addWidget(QLabel("Таймаут (мс):"))
-        self.timeout_input = QLineEdit("1000")
+        self.timeout_input = QLineEdit("2000")
+        self.timeout_input.setEnabled(False)  # таймаут фиксированный
         layout.addWidget(self.timeout_input)
 
         btn_layout = QHBoxLayout()
@@ -76,11 +78,8 @@ class ConnectSettingsWindow(QWidget):
     def emit_connection(self):
         """Вызывается при клике 'Подключиться' — отправляет сигнал с параметрами"""
         port = self.port_combo.currentText()
-        baud = int(self.baud_combo.currentText())
-        try:
-            timeout = int(self.timeout_input.text())
-        except ValueError:
-            timeout = 1000  # ms
+        baud = 9600
+        timeout = 2000  # ms
 
         # сигнал MainWindow/Engine, чтобы движок открыл порт
         self.connect_signal.emit(port, baud, timeout)
@@ -440,9 +439,8 @@ class MainWindow(QMainWindow):
 
     def start_serial(self, port, baud, timeout):
         try:
-            self.engine.serial.port_name = port
-            self.engine.serial.baudrate = baud
-            self.engine.serial.timeout = timeout
+            # baud/timeout фиксированы внутри SerialEngine (9600 бод, 2000 мс)
+            self.engine.set_serial_settings(port, baud, timeout)
             self.engine.open_serial()
         except Exception as e:
             self.status_indicator.set_state("error")
