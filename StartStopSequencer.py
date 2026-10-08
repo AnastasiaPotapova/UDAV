@@ -142,6 +142,12 @@ def _device_confirmed(engine, target: str, on: bool):
 
 def build_start_steps():
     return [
+        # Первая команда "Запуска" - закрыть V5. Если V5 уже закрыт, Engine
+        # не отправит повторную команду, а шаг с confirm=True пройдёт сразу
+        # по имеющейся телеметрии.
+        {"kind": "cmd", "target": "V5", "device": False, "on": False, "confirm": True,
+         "label": "Закрытие клапана V5"},
+
         {"kind": "cmd", "target": "NI", "device": True, "on": True,
          "label": "Включение форвакуумного насоса (NI)"},
         {"kind": "confirm",

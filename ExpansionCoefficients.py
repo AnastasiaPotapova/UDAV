@@ -14,7 +14,7 @@
 (DEFAULT_COEFFICIENTS - k по умолчанию заданы, q0 - заглушки; реальные значения нужно внести через меню
 "Коэффициенты статического расширения" -> "Редактировать" -> "Сохранить").
 
-Строки таблицы соответствуют вариантам а), б), в), г) в процедуре
+Строки таблицы соответствуют вариантам а), б) в процедуре
 "Статическое расширение" (см. StaticExpansion.py).
 """
 import json
@@ -30,18 +30,16 @@ from PyQt5.QtWidgets import (
 from logger_setup import app_logger
 
 EXPANSION_COEFFICIENTS_FILE_NAME = "static_expansion_coefficients.json"
-NUM_COEFFICIENTS = 4
-VARIANT_LETTERS = ["а", "б", "в", "г"]
+NUM_COEFFICIENTS = 2
+VARIANT_LETTERS = ["а", "б"]
 
-# Значения k по умолчанию: вариант а) - 1,455E-2, варианты б), в), г) - 1,060E-2.
+# Значения k по умолчанию: вариант а) - 1,455E-2, вариант б) - 1,060E-2.
 # q0 пока заглушка (0) - реальные значения вносятся через меню "Коэффициенты
 # статического расширения". Применяются только при создании нового файла
 # коэффициентов: уже существующий static_expansion_coefficients.json не
 # перезаписывается.
 DEFAULT_COEFFICIENTS = [
     {"k": 1.455e-2, "q0": 0.0},
-    {"k": 1.060e-2, "q0": 0.0},
-    {"k": 1.060e-2, "q0": 0.0},
     {"k": 1.060e-2, "q0": 0.0},
 ]
 
@@ -80,10 +78,12 @@ def format_number(value) -> str:
 
 
 def _validate(coefficients) -> list:
-    if not isinstance(coefficients, list) or len(coefficients) != NUM_COEFFICIENTS:
+    if not isinstance(coefficients, list) or len(coefficients) < NUM_COEFFICIENTS:
         raise ValueError(f"ожидается {NUM_COEFFICIENTS} строки коэффициентов")
+    # старый файл мог содержать 4 строки (варианты а-г): варианты в) и г)
+    # удалены, берём только первые NUM_COEFFICIENTS строк
     result = []
-    for row in coefficients:
+    for row in coefficients[:NUM_COEFFICIENTS]:
         k = float(row["k"])
         q0 = float(row["q0"])
         if k == 0:
@@ -130,7 +130,7 @@ def save_coefficients(coefficients: list, path: str = None):
 
 class ExpansionCoefficientsWindow(QWidget):
     """Меню "Коэффициенты статического расширения": таблица (№, k, q0) из
-    4 строк. По умолчанию только просмотр; "Редактировать" разрешает правку,
+    2 строк. По умолчанию только просмотр; "Редактировать" разрешает правку,
     та же кнопка превращается в "Сохранить" - значения записываются в файл
     и в Engine.expansion_coefficients (сразу используются процедурой)."""
 

@@ -6,23 +6,24 @@
        Pвв < 0,3 Па          - n = 3
        0,3 <= Pвв <= 19 Па   - n = 2
        Pвв > 19 Па           - n = 1
-3. Выбор ОДНОГО варианта коэффициентов а)/б)/в)/г) (строки таблицы
+3. Выбор ОДНОГО варианта коэффициентов а)/б) (строки таблицы
    "Коэффициенты статического расширения", по умолчанию выбран а).
 4. Показываются редактируемые поля k и q. Если оператор меняет значение -
    активируется кнопка "Применить": изменённые k/q используются ТОЛЬКО в
    этом запуске процедуры, в таблицу и файл они НЕ записываются.
 
-Вариант определяет два шага процедуры:
-    шаг 8  (V8):          а, в - открыть V8;  б, г - закрыть V8
-    шаг 14 (и 23 при n=2): а, б - открыть V4; в, г - закрыть V4
+Вариант определяет шаг 8 (V8): а - открыть V8; б - закрыть V8.
+Шаг 14 (и 23 при n=2): в обоих вариантах открыть V4.
+Для n = 1 и варианта б шаги 8 и 9 поменяны местами: сначала установка
+исходного давления в малом объёме, потом закрытие V8.
 
 Шаги (n = 1):
      6. Pисх = Pвв / k                 (n = 2: Pвв / k^2, n = 3: Pвв / k^3)
      7. Закрыть V4                     (отсюда отсчитывается T)
      8. V8 - см. выше
      9. Установка Pисх в малом объёме (контроль по P2)
-    10. Ожидание 1 мин
-    11. Ожидание P3 < 1E-2 Па, p0 = P3
+    10. Проверка P3 < 1E-2 Па (ждём, пока условие выполнится)
+    11. Ожидание 1 мин, затем запись p0 = текущее P3
     12. p1 = текущее P2; Pисх в формуле = это же ФАКТИЧЕСКОЕ P2
         (а не рассчитанное в п.6 - то нужно только как уставка в п.9)
     13. Закрыть V2
@@ -90,9 +91,9 @@ def expansions_count(p_target: float) -> int:
 
 def variant_flags(variant: int):
     """(открыть ли V8 на шаге 8, открыть ли V4 на шаге 14/23) для варианта
-    0..3 (а..г)."""
-    v8_open = variant in (0, 2)   # а, в - открыть V8; б, г - закрыть
-    v4_open = variant in (0, 1)   # а, б - открыть V4; в, г - закрыть
+    0..1 (а, б)."""
+    v8_open = variant == 0   # а - открыть V8; б - закрыть
+    v4_open = True           # а, б - открыть V4
     return v8_open, v4_open
 
 
@@ -105,7 +106,7 @@ def calc_static_pressure(k, p_init, p0, p1, q, t):
 # Окно ввода давления и выбора коэффициентов (п. 1-4)
 # ---------------------------------------------------------------------------
 class StaticExpansionSetupWindow(QWidget):
-    """start_requested(dict): p_target, n, variant (0..3), k, q, edited."""
+    """start_requested(dict): p_target, n, variant (0..1), k, q, edited."""
 
     start_requested = pyqtSignal(dict)
     closed = pyqtSignal()  # окно закрыто (в т.ч. после запуска) - см. MetrologyVerification
@@ -413,13 +414,21 @@ class StaticExpansionRunner(QObject):
         v4_text = "Открытие клапана V4" if v4_open else "Закрытие клапана V4"
         final_loop_label = "Расчёт каждые 3 с (до «Стоп»)"
 
+        v8_step = (v8_text, lambda: self._s_valve("V8", v8_open))
+        set_step = ("Установка исходного давления в малом объёме (P2)", self._s_set_pressure)
+        # n = 1, вариант б: сначала установка давления, потом закрытие V8
+        if self.n == 1 and self.variant == 1:
+            v8_and_set = [set_step, v8_step]
+        else:
+            v8_and_set = [v8_step, set_step]
+
         self.steps = [
             ("Расчёт исходного давления", self._s_calc_initial),
             ("Закрытие клапана V4", lambda: self._s_valve("V4", False, start_t=True)),
-            (v8_text, lambda: self._s_valve("V8", v8_open)),
-            ("Установка исходного давления в малом объёме (P2)", self._s_set_pressure),
+            *v8_and_set,
+            ("Проверка P3 < 1E-2 Па", self._s_wait_p3),
             ("Ожидание 1 минуты", lambda: self._s_delay(SETTLE_DELAY_S)),
-            ("Проверка P3 < 1E-2 Па, запись p0", self._s_wait_p0),
+            ("Запись p0 = текущее P3", self._s_record_p0),
             ("Запись текущего P2 (p1 = фактическое Pисх)", self._s_record_p1),
             ("Закрытие клапана V2", lambda: self._s_valve("V2", False)),
             (v4_text, lambda: self._s_valve("V4", v4_open)),
@@ -607,6 +616,31 @@ class StaticExpansionRunner(QObject):
                 return True
             self.dialog.set_status(f"Ожидание: осталось {int(left) + 1} с")
             return False
+
+        self._wait_until(check)
+
+    def _s_wait_p3(self):
+        """Только проверка: ждём P3 < порога, p0 здесь НЕ записывается."""
+        self.dialog.set_status(f"Проверка: ожидание P3 < {P0_THRESHOLD_PA:g} Па…")
+
+        def check():
+            p3 = _read_sensor(self.engine, "P3")
+            if p3 is not None and p3 < P0_THRESHOLD_PA:
+                self.dialog.add_log(f"P3 = {format_number(p3)} Па < {format_number(P0_THRESHOLD_PA)} Па - условие выполнено")
+                return True
+            return False
+
+        self._wait_until(check)
+
+    def _s_record_p0(self):
+        """Запись p0 = текущее P3 (после выдержки)."""
+        def check():
+            p3 = _read_sensor(self.engine, "P3")
+            if p3 is None:
+                return False
+            self.p0 = p3
+            self.dialog.add_log(f"p0 = P3 = {format_number(p3)} Па")
+            return True
 
         self._wait_until(check)
 

@@ -27,6 +27,7 @@
 """
 import os
 import sys
+import textwrap
 from datetime import datetime
 
 from PyQt5.QtCore import QObject, QTimer, Qt, pyqtSignal
@@ -67,6 +68,9 @@ DEVICE_FIELDS = [
     ("customer", "Заказчик"),
     ("conditions", "Условия окружающей среды (давление, температура, влажность)"),
 ]
+
+# ширина (в символах), по которой переносятся заголовки столбцов таблицы СИ
+HEADER_WRAP_WIDTH = 18
 
 METHOD_DIRECT = "Напрямую"
 METHOD_EXPANSION = "Статическое расширение"
@@ -170,9 +174,12 @@ class MetrologySetupWindow(QWidget):
         layout.addWidget(QLabel("Данные исследуемых СИ (поля можно оставить пустыми):"))
 
         self.table = QTableWidget(0, 2 + len(DEVICE_FIELDS))
+        # заголовки длинные - переносим по словам, чтобы читались целиком
         self.table.setHorizontalHeaderLabels(
-            ["№", "Расположение"] + [title for _, title in DEVICE_FIELDS]
+            ["№", "Расположение"]
+            + [textwrap.fill(title, HEADER_WRAP_WIDTH) for _, title in DEVICE_FIELDS]
         )
+        self.table.horizontalHeader().setDefaultAlignment(Qt.AlignCenter)
         self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.table.setWordWrap(True)

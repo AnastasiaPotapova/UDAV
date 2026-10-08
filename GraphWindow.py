@@ -25,6 +25,11 @@ def _log_tick_label(value: float) -> str:
     return f"1·10{str(exp).translate(_SUPERSCRIPTS)}"
 
 
+# Графики, которые можно обнулять кнопками "Обнуление МИДЫ (Р1)" / "(Р2)":
+# 0 - МИДА-ДА-15 (Р1), 1 - МИДА-15 (Р2).
+ZEROABLE_GRAPHS = (0, 1)
+
+
 class GraphPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -46,6 +51,13 @@ class GraphPanel(QWidget):
             {"ylim": (1e-1, 1e5), "yticks": [1e-1, 1, 10, 100, 1e3, 1e5], "fmt": format_p2},
             {"ylim": (1e-3, 100), "yticks": [1e-3, 1e-2, 1e-1, 1, 10, 100], "fmt": format_p3},
         ]
+
+        # Обнуление МИДЫ ТОЛЬКО для графика: из показаний графика вычитается
+        # смещение (сырое значение в момент нажатия). Сами показания датчика,
+        # нижняя панель, запись в файл и команды установки давления не
+        # меняются. Смещения хранятся в памяти до сброса/перезапуска.
+        self.zero_offsets = {i: 0.0 for i in ZEROABLE_GRAPHS}
+        self.raw_values = {i: deque(maxlen=self.MAX_POINTS) for i in ZEROABLE_GRAPHS}
 
         # Инициализация данных для трёх графиков
         self.data = [deque(maxlen=self.MAX_POINTS) for _ in range(3)]
@@ -127,6 +139,8 @@ class GraphPanel(QWidget):
             for j in range(self.MAX_POINTS):
                 self.timestamps[i].append(j)
                 self.data[i].append(floor_value)
+                if i in ZEROABLE_GRAPHS:
+                    self.raw_values[i].append(None)
 
             # Обновляем линию
             line.set_data(self.timestamps[i], self.data[i])
@@ -136,6 +150,11 @@ class GraphPanel(QWidget):
         for i in range(3):
             value = actual_data[i]
             floor_value = self.axis_specs[i]["ylim"][0]
+
+            if i in ZEROABLE_GRAPHS:
+                self.raw_values[i].append(value)
+                if value is not None:
+                    value = value - self.zero_offsets[i]
 
             # На логарифмической шкале нулевые/отрицательные значения не
             # отображаются - подставляем нижнюю границу диапазона датчика
@@ -149,7 +168,9 @@ class GraphPanel(QWidget):
 
             # Подпись текущего значения - тот же формат, что и в нижней
             # строке измерений (ТЗ п.4/п.5)
-            self.value_texts[i].set_text(self.axis_specs[i]["fmt"](value))
+            self.value_texts[i].set_text(
+                self.axis_specs[i]["fmt"](value if value is None or value > 0 else 0)
+            )
 
             # Сдвигаем видимую область, если данные выходят за правую границу
             if self.timestamps[i][-1] > self.axes[i].get_xlim()[1]:
@@ -167,6 +188,38 @@ class GraphPanel(QWidget):
 
             # Перерисовываем график
             self.canvases[i].draw()
+
+    # ------------------------------------------------------------ обнуление МИДЫ
+    def is_zeroed(self, index: int) -> bool:
+        return self.zero_offsets.get(index, 0.0) != 0.0
+
+    def last_raw(self, index: int):
+        """Последнее сырое показание графика (None, если данных ещё нет)."""
+        values = self.raw_values[index]
+        return values[-1] if values else None
+
+    def zero_graph(self, index: int, raw_value: float):
+        """Обнулить график: текущее сырое значение принимается за ноль.
+        Вся уже нарисованная история пересчитывается с новым смещением."""
+        self.zero_offsets[index] = float(raw_value)
+        self._rebuild_history(index)
+
+    def reset_zero(self, index: int):
+        """Снять обнуление - график снова показывает сырые значения."""
+        self.zero_offsets[index] = 0.0
+        self._rebuild_history(index)
+
+    def _rebuild_history(self, i: int):
+        offset = self.zero_offsets[i]
+        floor_value = self.axis_specs[i]["ylim"][0]
+        self.data[i].clear()
+        for raw in self.raw_values[i]:
+            value = None if raw is None else raw - offset
+            self.data[i].append(value if value and value > 0 else floor_value)
+        self.lines[i].set_data(self.timestamps[i], self.data[i])
+        suffix = " — обнулено" if offset != 0.0 else ""
+        self.axes[i].set_title(self.graph_name[i] + suffix)
+        self.canvases[i].draw()
 
     def mark_event(self):
         """Ставит маркер события на все три графика."""

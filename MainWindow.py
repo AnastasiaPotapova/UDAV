@@ -161,6 +161,14 @@ class MainWindow(QMainWindow):
         commands_layout.addWidget(self.metrology_btn)
         self.metrology_controller = None
 
+        # обнуление МИДЫ - только для графика (см. GraphPanel.zero_graph)
+        self.zero_mida_btns = {}
+        for index, caption in ((0, "Обнуление МИДЫ (Р1)"), (1, "Обнуление МИДЫ (Р2)")):
+            btn = QPushButton(caption)
+            btn.clicked.connect(lambda _, i=index: self._on_zero_mida_clicked(i))
+            commands_layout.addWidget(btn)
+            self.zero_mida_btns[index] = (btn, caption)
+
         commands_layout.addStretch()
 
         scroll = QScrollArea()
@@ -332,6 +340,22 @@ class MainWindow(QMainWindow):
         """Кнопка "Замена датчиков" (StartStopController, см.
         StartStopSequencer.build_sensor_replace_steps)."""
         self.start_stop_controller.on_sensor_replace_clicked()
+
+    def _on_zero_mida_clicked(self, index: int):
+        """Кнопки "Обнуление МИДЫ (Р1/Р2)": соответствующий график
+        обнуляется по текущему показанию, повторное нажатие снимает
+        обнуление. Нижняя панель, файл и установка давления не меняются."""
+        btn, caption = self.zero_mida_btns[index]
+        if self.graph_panel.is_zeroed(index):
+            self.graph_panel.reset_zero(index)
+            btn.setText(caption)
+            return
+        raw = self.graph_panel.last_raw(index)
+        if raw is None:
+            QMessageBox.warning(self, "Обнуление МИДЫ", "Нет показаний МИДЫ - обнулять нечего.")
+            return
+        self.graph_panel.zero_graph(index, raw)
+        btn.setText("Снять обнуление " + caption.split(" ", 1)[1])
 
     def open_pressure_window(self):
         """Окно "Установка давления" (ТЗ_к_ПО_2.docx, п.2)."""
