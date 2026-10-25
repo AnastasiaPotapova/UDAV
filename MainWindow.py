@@ -1,3 +1,4 @@
+import re
 import logging
 
 import serial.tools.list_ports
@@ -22,6 +23,13 @@ from StartStopSequencer import StartStopController
 from ExpansionCoefficients import ExpansionCoefficientsWindow
 from StaticExpansion import StaticExpansionSetupWindow, StaticExpansionRunner
 from MetrologyVerification import MetrologyController
+
+
+
+def _port_sort_key(name: str):
+    """Естественная сортировка имён портов: COM2 < COM10, ttyUSB0 < ttyUSB1 < ttyUSB10."""
+    return [int(part) if part.isdigit() else part.lower()
+            for part in re.split(r"(\d+)", name)]
 
 
 # ------------------------------------------------------------------------------------------------
@@ -68,10 +76,12 @@ class ConnectSettingsWindow(QWidget):
     def refresh_ports(self):
         """Обновляем список доступных COM-портов"""
         self.port_combo.clear()
-        ports = serial.tools.list_ports.comports()
+        ports = sorted(serial.tools.list_ports.comports(),
+                       key=lambda p: _port_sort_key(p.device))
         if ports:
             for p in ports:
                 self.port_combo.addItem(p.device)
+            self.port_combo.setCurrentIndex(0)
         else:
             self.port_combo.addItem("Нет доступных портов")
 
