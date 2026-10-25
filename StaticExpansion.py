@@ -34,7 +34,8 @@
 Для каждого следующего расширения (n = 2: одно, n = 3: два повтора):
     17. Закрыть V4                     (T отсчитывается заново)
     18. Открыть V2
-    19-20. Ожидание P3 < 1E-2 Па, p0 = P3
+    19. Проверка P3 < 1E-2 Па (ждём, пока условие выполнится)
+    20. Ожидание 1 мин, затем запись p0 = текущее P3 (как в п.10-11)
     21. Закрыть V2
     22. Pисх = Pстат, рассчитанное по результатам ПРЕДЫДУЩЕГО расширения
         (а не P2). Только в первом расширении Pисх = фактическое P2.
@@ -444,7 +445,10 @@ class StaticExpansionRunner(QObject):
                  lambda: self._s_valve("V4", False, start_t=True)),
                 (f"[Расширение {repeat}] Открытие клапана V2",
                  lambda: self._s_valve("V2", True)),
-                (f"[Расширение {repeat}] Ожидание P3 < 1E-2 Па, запись p0", self._s_wait_p0),
+                (f"[Расширение {repeat}] Проверка P3 < 1E-2 Па", self._s_wait_p3),
+                (f"[Расширение {repeat}] Ожидание 1 минуты",
+                 lambda: self._s_delay(SETTLE_DELAY_S)),
+                (f"[Расширение {repeat}] Запись p0 = текущее P3", self._s_record_p0),
                 (f"[Расширение {repeat}] Закрытие клапана V2",
                  lambda: self._s_valve("V2", False)),
                 (f"[Расширение {repeat}] Pисх = Pстат предыдущего расширения",
@@ -641,19 +645,6 @@ class StaticExpansionRunner(QObject):
             self.p0 = p3
             self.dialog.add_log(f"p0 = P3 = {format_number(p3)} Па")
             return True
-
-        self._wait_until(check)
-
-    def _s_wait_p0(self):
-        self.dialog.set_status(f"Ожидание P3 < {P0_THRESHOLD_PA:g} Па…")
-
-        def check():
-            p3 = _read_sensor(self.engine, "P3")
-            if p3 is not None and p3 < P0_THRESHOLD_PA:
-                self.p0 = p3
-                self.dialog.add_log(f"p0 = P3 = {format_number(p3)} Па")
-                return True
-            return False
 
         self._wait_until(check)
 
