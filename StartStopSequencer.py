@@ -167,10 +167,6 @@ def build_start_steps():
         {"kind": "wait", "sensor": "P2", "op": "<", "threshold": PRESSURE_V8_THRESHOLD_PA,
          "label": f"Ожидание давления (P2 < {PRESSURE_V8_THRESHOLD_PA:g} Па)"},
 
-        {"kind": "confirm",
-         "label": "Подтверждение оператора: давление достигнуто",
-         "text": "Нужное давление достигнуто?"},
-
         {"kind": "cmd", "target": "NR", "device": True, "on": True,
          "label": "Включение турбомолекулярного насоса (NR)"},
         {"kind": "wait", "sensor": "P2", "op": "<", "threshold": PRESSURE_TURBINE_THRESHOLD_PA,
