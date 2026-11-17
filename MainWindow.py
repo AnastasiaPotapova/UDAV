@@ -307,9 +307,9 @@ class MainWindow(QMainWindow):
 
     def _update_values_bar(self, data: dict):
         """Обновляет нижнюю панель значений по данным обменного пакета."""
-        self.value_labels["P1"].setText(format_p1(data.get("mida_pressure")))
+        self.value_labels["P1"].setText(format_p1(data.get("thermal_pressure")))
         self.value_labels["P2"].setText(format_p2(data.get("magdischarge_pressure")))
-        self.value_labels["P3"].setText(format_p3(data.get("thermal_pressure")))
+        self.value_labels["P3"].setText(format_p3(data.get("mida_pressure")))
         self.value_labels["PSTAT"].setText(format_pstat(self.engine.static_pressure))
         # T2 и T MCU внешн. с экрана убраны (они по-прежнему пишутся в CSV)
         self.value_labels["T1"].setText(format_temperature(data.get("temperature_channel_1"), scale=100))
