@@ -52,10 +52,10 @@ class GraphPanel(QWidget):
             {"ylim": (1e-3, 100), "yticks": [1e-3, 1e-2, 1e-1, 1, 10, 100], "fmt": format_p3},
         ]
 
-        # Обнуление МИДЫ ТОЛЬКО для графика: из показаний графика вычитается
-        # смещение (сырое значение в момент нажатия). Сами показания датчика,
-        # нижняя панель, запись в файл и команды установки давления не
-        # меняются. Смещения хранятся в памяти до сброса/перезапуска.
+        # Обнуление МИДЫ: из показаний графика и значения Р1/Р2 в нижней панели
+        # вычитается смещение (сырое значение в момент нажатия). Запись в файл
+        # и команды установки давления не меняются. Смещения хранятся в памяти
+        # до сброса/перезапуска.
         self.zero_offsets = {i: 0.0 for i in ZEROABLE_GRAPHS}
         self.raw_values = {i: deque(maxlen=self.MAX_POINTS) for i in ZEROABLE_GRAPHS}
 
@@ -197,6 +197,13 @@ class GraphPanel(QWidget):
         """Последнее сырое показание графика (None, если данных ещё нет)."""
         values = self.raw_values[index]
         return values[-1] if values else None
+
+    def display_value(self, index: int, raw):
+        """Значение с учётом обнуления (для нижней панели значений).
+        Для не обнуляемых графиков и для None возвращается как есть."""
+        if raw is None or index not in ZEROABLE_GRAPHS:
+            return raw
+        return raw - self.zero_offsets[index]
 
     def zero_graph(self, index: int, raw_value: float):
         """Обнулить график: текущее сырое значение принимается за ноль.

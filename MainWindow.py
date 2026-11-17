@@ -314,8 +314,12 @@ class MainWindow(QMainWindow):
 
     def _update_values_bar(self, data: dict):
         """Обновляет нижнюю панель значений по данным обменного пакета."""
-        self.value_labels["P1"].setText(format_p1(data.get("thermal_pressure")))
-        self.value_labels["P2"].setText(format_p2(data.get("magdischarge_pressure")))
+        # P1/P2 учитывают обнуление МИДЫ (те же смещения, что у графиков
+        # Р1/Р2); P3 и Р стат. обнулением не затрагиваются
+        self.value_labels["P1"].setText(format_p1(
+            self.graph_panel.display_value(0, data.get("thermal_pressure"))))
+        self.value_labels["P2"].setText(format_p2(
+            self.graph_panel.display_value(1, data.get("magdischarge_pressure"))))
         self.value_labels["P3"].setText(format_p3(data.get("mida_pressure")))
         self.value_labels["PSTAT"].setText(format_pstat(self.engine.static_pressure))
         # T2 и T MCU внешн. с экрана убраны (они по-прежнему пишутся в CSV)
@@ -361,7 +365,8 @@ class MainWindow(QMainWindow):
     def _on_zero_mida_clicked(self, index: int):
         """Кнопки "Обнуление МИДЫ (Р1/Р2)": соответствующий график
         обнуляется по текущему показанию, повторное нажатие снимает
-        обнуление. Нижняя панель, файл и установка давления не меняются."""
+        обнуление. Значения Р1/Р2 в нижней панели считаются с тем же смещением;
+        файл и установка давления не меняются."""
         btn, caption = self.zero_mida_btns[index]
         if self.graph_panel.is_zeroed(index):
             self.graph_panel.reset_zero(index)
