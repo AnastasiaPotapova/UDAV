@@ -49,6 +49,8 @@ PRESSURE_MAGNETRON_THRESHOLD_PA = 1e-2  # готовность по показа
 # не меньше этого значения (атмосфера ~101 325 Па; порог с запасом на
 # погрешность датчика у верхней границы диапазона)
 PRESSURE_ATMOSPHERE_THRESHOLD_PA = 9.0e4
+# Уставка, которую нужно выставить перед ожиданием атмосферы (VF, SET_PRESSURE)
+PRESSURE_ATMOSPHERE_SETPOINT_PA = 90000.0
 
 # Датчики хранятся в Engine.last_data под этими именами полей.
 # ВНИМАНИЕ: P1/P3 здесь намеренно НЕ совпадают с MainWindow._update_values_bar -
@@ -128,6 +130,8 @@ def _device_confirmed(engine, target: str, on: bool):
 #                      (device=False); если "confirm": True - следующий шаг
 #                      начнётся только когда контроллер подтвердит реальное
 #                      срабатывание (см. _device_confirmed), а не сразу
+# kind == "set_pressure" -> выставить уставку давления "value" (Па) и сразу
+#                      перейти дальше (как кнопка "Установка давления")
 # kind == "confirm" -> показать text и ждать клика "Подтвердить" (либо
 #                      "Отмена" - тогда процедура прерывается и дальше
 #                      никакие команды не отправляются)
@@ -231,6 +235,8 @@ def build_sensor_replace_steps():
          "label": "Открытие клапана V4"},
         {"kind": "cmd", "target": "V8", "device": False, "on": True, "confirm": True,
          "label": "Открытие клапана V8"},
+        {"kind": "set_pressure", "value": PRESSURE_ATMOSPHERE_SETPOINT_PA,
+         "label": f"Установка давления {PRESSURE_ATMOSPHERE_SETPOINT_PA:g} Па"},
         {"kind": "wait", "sensor": "P2", "op": ">=", "threshold": PRESSURE_ATMOSPHERE_THRESHOLD_PA,
          "label": "Ожидание атмосферного давления по P2",
          "text": f"Ожидание атмосферного давления (P2 ≥ {PRESSURE_ATMOSPHERE_THRESHOLD_PA:g} Па)…"},
@@ -455,6 +461,13 @@ class SequenceRunner(QObject):
         elif kind == "message":
             self.dialog.show_confirm_button(False)
             QTimer.singleShot(0, self._advance)
+        elif kind == "set_pressure":
+            # уставка давления - та же команда, что у кнопки "Установка давления"
+            self.dialog.show_confirm_button(False)
+            self.engine.set_pressure(step["value"])
+            logging.info('Процедура "%s": уставка давления %s Па',
+                         self.dialog.windowTitle(), step["value"])
+            self._advance()
         elif kind == "wait":
             self.dialog.show_confirm_button(False)
             self._start_wait(step)
