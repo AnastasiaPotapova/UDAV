@@ -5,10 +5,9 @@ import time
 from typing import Optional
 from logger_setup import app_logger
 
-# Фиксированные параметры подключения
-FIXED_BAUDRATE = 9600
-FIXED_TIMEOUT_MS = 2000                     # мс
-FIXED_TIMEOUT_S = FIXED_TIMEOUT_MS / 1000   # pyserial принимает секунды
+# Значения по умолчанию (оператор может изменить их в окне подключения)
+DEFAULT_BAUDRATE = 9600
+DEFAULT_TIMEOUT_MS = 2000                   # мс
 
 
 class SerialEngine:
@@ -16,8 +15,8 @@ class SerialEngine:
 
     def __init__(self, protocol_engine=None):
         self.port_name: Optional[str] = None
-        self.baudrate: int = FIXED_BAUDRATE
-        self.timeout: float = FIXED_TIMEOUT_S  # секунды
+        self.baudrate: int = DEFAULT_BAUDRATE
+        self.timeout: float = DEFAULT_TIMEOUT_MS / 1000  # секунды
 
         self.ser: Optional[serial.Serial] = None
         self.send_queue = queue.Queue()
@@ -28,13 +27,14 @@ class SerialEngine:
         self._threads_started = False
 
     # --- настройки порта ---
-    def set_port_settings(self, port: str, baudrate: int = None, timeout: float = None):
-        """Устанавливаем порт. Скорость и таймаут всегда фиксированные
-        (9600 бод, 2000 мс), переданные baudrate/timeout игнорируются."""
+    def set_port_settings(self, port: str, baudrate: int = None, timeout_ms: int = None):
+        """Устанавливаем порт. Скорость (бод) и таймаут (мс) берутся из окна
+        подключения; если не переданы - используются значения по умолчанию."""
         self.port_name = port
-        self.baudrate = FIXED_BAUDRATE
-        self.timeout = FIXED_TIMEOUT_S
-        print(f"[INFO] Настройки порта установлены: {port}, {FIXED_BAUDRATE}bps, timeout={FIXED_TIMEOUT_MS}ms")
+        self.baudrate = int(baudrate) if baudrate else DEFAULT_BAUDRATE
+        timeout_ms = int(timeout_ms) if timeout_ms else DEFAULT_TIMEOUT_MS
+        self.timeout = timeout_ms / 1000  # pyserial принимает секунды
+        print(f"[INFO] Настройки порта установлены: {port}, {self.baudrate}bps, timeout={timeout_ms}ms")
 
     # --- управление портом ---
     def open_port(self):
@@ -44,15 +44,11 @@ class SerialEngine:
             app_logger.info(f"Порт {self.port_name} уже открыт")
             return
 
-        # на случай прямой записи в атрибуты снаружи
-        self.baudrate = FIXED_BAUDRATE
-        self.timeout = FIXED_TIMEOUT_S
-
         self.ser = serial.Serial(self.port_name, self.baudrate,
                                  timeout=self.timeout, write_timeout=self.timeout)
         self.running = True
         self._start_threads()
-        app_logger.info(f"Порт {self.port_name} открыт, скорость {self.baudrate}, таймаут {FIXED_TIMEOUT_MS} мс")
+        app_logger.info(f"Порт {self.port_name} открыт, скорость {self.baudrate}, таймаут {self.timeout * 1000:g} мс")
 
     def close_port(self):
         self.running = False

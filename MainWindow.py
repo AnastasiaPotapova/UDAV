@@ -3,6 +3,8 @@ import logging
 
 import serial.tools.list_ports
 from PyQt5.QtCore import pyqtSignal, QTimer, Qt
+from PyQt5.QtGui import QIntValidator
+from SerialEngine import DEFAULT_BAUDRATE, DEFAULT_TIMEOUT_MS
 from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QScrollArea, \
     QMessageBox, QLabel, QComboBox, QLineEdit, QFrame
 
@@ -49,15 +51,17 @@ class ConnectSettingsWindow(QWidget):
         self.port_combo = QComboBox()
         layout.addWidget(self.port_combo)
 
-        layout.addWidget(QLabel("Скорость:"))
+        layout.addWidget(QLabel("Скорость (бод):"))
         self.baud_combo = QComboBox()
+        self.baud_combo.setEditable(True)  # можно выбрать или ввести своё значение
         self.baud_combo.addItems(["9600"])
-        self.baud_combo.setEnabled(False)  # скорость фиксированная
+        self.baud_combo.setCurrentText(str(DEFAULT_BAUDRATE))
+        self.baud_combo.lineEdit().setValidator(QIntValidator(1, 10_000_000))
         layout.addWidget(self.baud_combo)
 
         layout.addWidget(QLabel("Таймаут (мс):"))
-        self.timeout_input = QLineEdit("2000")
-        self.timeout_input.setEnabled(False)  # таймаут фиксированный
+        self.timeout_input = QLineEdit(str(DEFAULT_TIMEOUT_MS))
+        self.timeout_input.setValidator(QIntValidator(1, 600_000))
         layout.addWidget(self.timeout_input)
 
         btn_layout = QHBoxLayout()
@@ -88,8 +92,15 @@ class ConnectSettingsWindow(QWidget):
     def emit_connection(self):
         """Вызывается при клике 'Подключиться' — отправляет сигнал с параметрами"""
         port = self.port_combo.currentText()
-        baud = 9600
-        timeout = 2000  # ms
+        try:
+            baud = int(self.baud_combo.currentText().strip())
+            timeout = int(self.timeout_input.text().strip())
+            if baud <= 0 or timeout <= 0:
+                raise ValueError
+        except ValueError:
+            QMessageBox.warning(self, "Настройки подключения",
+                                "Скорость и таймаут должны быть положительными целыми числами.")
+            return
 
         # сигнал MainWindow/Engine, чтобы движок открыл порт
         self.connect_signal.emit(port, baud, timeout)
@@ -473,7 +484,7 @@ class MainWindow(QMainWindow):
 
     def start_serial(self, port, baud, timeout):
         try:
-            # baud/timeout фиксированы внутри SerialEngine (9600 бод, 2000 мс)
+            # baud (бод) и timeout (мс) заданы оператором в окне подключения
             self.engine.set_serial_settings(port, baud, timeout)
             self.engine.open_serial()
         except Exception as e:
