@@ -213,10 +213,6 @@ class MainWindow(QMainWindow):
         self.power_btn.clicked.connect(self._on_power_clicked)
         indicator_row.addWidget(self.power_btn)
         self._update_power_button()
-        # ТЗ_к_ПО_2.docx, п.3: кнопку "Включить установку" пока убрать из
-        # интерфейса ("вернём, когда она заработает") - код и сигналы
-        # оставляем нетронутыми, чтобы включить обратно одной строкой.
-        self.power_btn.hide()
 
         indicator_row.addStretch()
         self.status_indicator = StatusIndicator()
